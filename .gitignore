@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.next/
+.env
+*.db
+*.db-shm
+*.db-wal
+weather_history.json
