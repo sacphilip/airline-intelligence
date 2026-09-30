@@ -1,0 +1,13 @@
+{
+  "name": "flight-tracker",
+  "version": "1.0.0",
+  "description": "Live flight tracking map using the adsb.lol open data API",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}

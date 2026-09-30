@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Tracker</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header>
+  <h1>Flight Tracker</h1>
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button type="button" role="tab" data-tab="map" aria-selected="true">Map</button>
+    <button type="button" role="tab" data-tab="flight" aria-selected="false">Find flight</button>
+    <button type="button" role="tab" data-tab="delays" aria-selected="false">Delays</button>
+  </nav>
+  <form class="search" id="search-form">
+    <input type="text" id="search-input" placeholder="Jump to a city or airport, e.g. Dubai" autocomplete="off">
+    <button class="primary" type="submit">Go</button>
+    <button type="button" id="locate-btn" title="Centre the map on your location">My location</button>
+  </form>
+  <span class="msg" id="search-msg" hidden></span>
+  <div class="status" id="status"><span class="pulse"></span><span id="status-text">Connecting…</span></div>
+</header>
+
+<main>
+  <div id="map" role="application" aria-label="Map of live aircraft"></div>
+  <aside>
+    <div class="stats">
+      <div class="stat"><div class="label">In view</div><div class="value" id="stat-view">–</div></div>
+      <div class="stat"><div class="label">Airborne</div><div class="value" id="stat-air">–</div></div>
+      <div class="stat"><div class="label">Emergencies</div><div class="value" id="stat-emerg">–</div></div>
+    </div>
+
+    <section class="details" id="details" hidden>
+      <div class="details-head">
+        <div>
+          <h2 id="d-callsign"></h2>
+          <div class="airline" id="d-airline" hidden></div>
+          <div class="sub" id="d-sub"></div>
+          <div id="d-emergency"></div>
+        </div>
+        <button class="close" id="d-close" aria-label="Close details">×</button>
+      </div>
+      <div class="sched">
+        <div class="route" id="d-route"></div>
+        <dl>
+          <div><dt>STA</dt><dd id="d-sta"></dd></div>
+          <div><dt id="d-eta-label">ETA</dt><dd id="d-eta"></dd></div>
+          <div><dt>Delay</dt><dd id="d-delay"></dd></div>
+        </dl>
+        <div class="sched-note" id="d-sched-note"></div>
+        <a href="#delays" class="to-delays" id="d-to-delays" hidden></a>
+      </div>
+      <section class="chain-wrap" id="d-chain" hidden></section>
+      <dl>
+        <div><dt>Altitude</dt><dd id="d-alt"></dd></div>
+        <div><dt>Vertical rate</dt><dd id="d-vs"></dd></div>
+        <div><dt>Ground speed</dt><dd id="d-speed"></dd></div>
+        <div><dt>Heading</dt><dd id="d-track"></dd></div>
+        <div><dt>Squawk</dt><dd id="d-squawk"></dd></div>
+        <div><dt>ICAO hex</dt><dd id="d-hex"></dd></div>
+      </dl>
+      <div class="actions">
+        <label><input type="checkbox" id="d-follow" checked> Follow on map</label>
+        <a id="d-link" target="_blank" rel="noopener">Open on adsb.lol ↗</a>
+      </div>
+      <div class="lost" id="d-lost" hidden></div>
+    </section>
+
+    <div class="list-tools">
+      <input type="text" id="filter-input" placeholder="Filter by callsign, airline, registration or type" autocomplete="off">
+      <div class="list-note" id="list-note"></div>
+    </div>
+    <ul class="list" id="list"></ul>
+  </aside>
+</main>
+
+<section class="delays" id="flight-view" hidden>
+  <div class="delays-inner fs">
+    <div class="seg fs-mode" role="group" aria-label="Search by">
+      <button type="button" data-mode="number" aria-pressed="true">Flight number</button>
+      <button type="button" data-mode="route" aria-pressed="false">Route</button>
+    </div>
+    <form class="fs-form" id="rs-form" novalidate hidden>
+      <div class="rs-row">
+        <label>From<input type="text" id="rs-from" placeholder="BLR" maxlength="4" autocomplete="off" spellcheck="false"></label>
+        <button type="button" id="rs-swap" title="Swap airports" aria-label="Swap airports">⇄</button>
+        <label>To<input type="text" id="rs-to" placeholder="DEL" maxlength="4" autocomplete="off" spellcheck="false"></label>
+        <label>Date<input type="date" id="rs-date"></label>
+        <button class="primary" type="submit">Search</button>
+      </div>
+      <div class="fs-hint" id="rs-hint">Airport codes, like BLR → DEL. The date is local at the departure airport.</div>
+    </form>
+    <form class="fs-form" id="fs-form" novalidate>
+      <label for="fs-input">Flight number</label>
+      <div class="fs-row">
+        <input type="text" id="fs-input" placeholder="e.g. 6E 5321" maxlength="10" autocomplete="off" spellcheck="false"
+          aria-describedby="fs-hint" aria-invalid="false">
+        <button class="primary" type="submit">Search</button>
+      </div>
+      <div class="fs-hint" id="fs-hint">Airline code and number, like 6E 5321, BA 117 or UAE 1.</div>
+    </form>
+    <div class="d-msg" id="fs-msg" hidden></div>
+    <div id="fs-results"></div>
+    <div class="panel" id="rs-results" hidden>
+      <div class="panel-head">
+        <h3 id="rs-title"></h3>
+        <span class="d-meta" id="rs-summary"></span>
+      </div>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr><th>Airline</th><th>Flight</th><th class="num">Departure</th><th class="num">Arrival</th><th class="num">Duration</th><th>Status</th><th class="num">Delay</th></tr></thead>
+          <tbody id="rs-table"></tbody>
+        </table>
+      </div>
+      <p class="panel-note" id="rs-note"></p>
+    </div>
+  </div>
+</section>
+
+<section class="delays" id="delays-view" hidden>
+  <div class="delays-inner">
+    <div class="d-toolbar">
+      <form id="delay-form">
+        <input type="text" id="delay-airport" placeholder="LHR or EGLL" maxlength="4" autocomplete="off" aria-label="Airport code">
+        <button class="primary" type="submit">Load</button>
+      </form>
+      <div class="seg" role="group" aria-label="Direction">
+        <button type="button" data-dir="Arrival" aria-pressed="false">Arrivals</button>
+        <button type="button" data-dir="Departure" aria-pressed="false">Departures</button>
+        <button type="button" data-dir="Both" aria-pressed="true">Both</button>
+      </div>
+      <span class="d-meta" id="delay-meta"></span>
+      <span class="d-meta" id="history-meta"></span>
+    </div>
+    <div class="d-msg" id="delay-msg" hidden></div>
+
+    <div class="delay-content" id="delay-content" hidden>
+      <div class="tiles">
+        <div class="tile"><div class="label">Flights with times</div><div class="value" id="t-flights">–</div><div class="note" id="t-flights-note"></div></div>
+        <div class="tile"><div class="label">Delayed 15+ min</div><div class="value" id="t-delayed">–</div><div class="note" id="t-delayed-note"></div></div>
+        <div class="tile"><div class="label">Avg delay (HHmm)</div><div class="value" id="t-avg">–</div><div class="note">per flight, early counts as 0</div></div>
+        <div class="tile"><div class="label">Worst delay (HHmm)</div><div class="value" id="t-worst">–</div><div class="note" id="t-worst-note"></div></div>
+        <div class="tile"><div class="label">Cancelled</div><div class="value" id="t-cancel">–</div><div class="note" id="t-cancel-note"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Airlines ranked by delay</h3>
+          <label>Rank by
+            <select id="rank-by">
+              <option value="total">Total delay (HHmm)</option>
+              <option value="delayed">Delayed flights (15+ min)</option>
+              <option value="pct">% of flights delayed</option>
+              <option value="avg">Avg delay per flight (HHmm)</option>
+            </select>
+          </label>
+          <label>Min flights
+            <select id="rank-min">
+              <option value="1">1</option><option value="3" selected>3</option><option value="5">5</option><option value="10">10</option>
+            </select>
+          </label>
+        </div>
+        <div class="bars" id="rank-chart"></div>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr><th class="num">#</th><th>Airline</th><th class="num">Flights</th><th class="num">Delayed 15+</th><th class="num">% delayed</th><th class="num">Avg delay</th><th class="num">Total delay</th><th class="num">Worst</th><th class="num">Cancelled</th></tr></thead>
+            <tbody id="rank-table"></tbody>
+          </table>
+        </div>
+        <p class="panel-note" id="rank-note"></p>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h3>Flight delays</h3>
+          <input type="text" id="delay-filter" placeholder="Filter flight, airline or airport" autocomplete="off">
+          <label><input type="checkbox" id="delayed-only"> Delayed 15+ min only</label>
+        </div>
+        <div class="table-wrap">
+          <table class="grid">
+            <thead><tr><th>Flight</th><th>Airline</th><th>Route</th><th class="num">Scheduled</th><th class="num">Est. / actual</th><th class="num">Delay (HHmm)</th><th>Status</th></tr></thead>
+            <tbody id="flight-table"></tbody>
+          </table>
+        </div>
+        <p class="panel-note" id="flight-note"></p>
+      </div>
+    </div>
+  </div>
+</section>
+<div class="chart-tip" id="chart-tip" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
