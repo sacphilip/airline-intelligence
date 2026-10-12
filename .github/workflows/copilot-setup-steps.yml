@@ -24,11 +24,16 @@ jobs:
         node-version: lts/*
 
     - name: Install dependencies
-      run: npm ci
+      run: |
+        npm ci
+        npm ci --prefix backend
+        npm ci --prefix frontend
 
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
 
-    # Customize this step as needed
+    # The root package has no build script; the app is built per package.
     - name: Build application
-      run: npx run build
+      run: |
+        npm run build --prefix backend
+        npm run build --prefix frontend
