@@ -66,8 +66,10 @@ export function RouteAnalytics({ from, to }: { from: string; to: string }) {
 
   const sorted = [...(data?.airlines ?? [])].sort((a, b) => {
     const av = sortValue(a, sort.key), bv = sortValue(b, sort.key);
-    const cmp = av < bv ? -1 : av > bv ? 1 : (b.score - a.score) || (b.flights - a.flights); // ties: score, then size
-    return sort.dir === 'asc' ? cmp : -cmp;
+    const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+    if (cmp !== 0) return sort.dir === 'asc' ? cmp : -cmp;
+    // Ties: higher score, then more flights, whichever way the column is sorted (as the backend ranks).
+    return (b.score - a.score) || (b.flights - a.flights);
   });
 
   return (
