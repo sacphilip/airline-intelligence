@@ -22,6 +22,21 @@ function computeScore(
   return Math.round(Math.min(100, Math.max(0, onTimeScore + cancelScore + avgDelayScore + consistencyScore)));
 }
 
+// A completed flight: it happened, wasn't cancelled, and we know how late it was.
+const COMPLETED = 'm.actual = true AND m.cancelled = false AND m.delay_min IS NOT NULL';
+
+/** Reliability figures from a row of aggregated movements (see routeAnalytics). */
+function reliabilityMetrics(r: any) {
+  const completed        = Number(r.observed  ?? 0);
+  const cancelled        = Number(r.cancelled ?? 0);
+  const flights          = completed + cancelled;
+  const onTimePct        = completed > 0 ? Number(r.on_time ?? 0) / completed : null;
+  const avgDelay         = r.avg_delay    != null ? Math.round(Number(r.avg_delay)) : null;
+  const stddev           = r.stddev_delay != null ? Number(r.stddev_delay)          : null;
+  const cancellationRate = flights > 0 ? cancelled / flights : null;
+  return { flights, completed, onTimePct, avgDelay, stddev, cancellationRate };
+}
+
 export function normalizeNumber(n: string | null): string | null {
   return n ? String(n).toUpperCase().replace(/\s+/g, '') : null;
 }
@@ -295,6 +310,79 @@ export class MovementRepository {
       })
       .filter(r => r.score !== null)
       .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  }
+
+  /**
+   * Every code an airport is recorded under. Some rows only carry the code that was searched
+   * (an airport board fetched as "BLR" stores no ICAO), so matching BLR must also match VOBL.
+   */
+  private async airportCodes(code: string): Promise<string[]> {
+    const pairs = await Promise.all(
+      [['airport_iata', 'airport_icao'], ['other_iata', 'other_icao']].map(([iata, icao]) =>
+        this.repo.createQueryBuilder('m')
+          .select(`m.${iata}`, 'iata').addSelect(`m.${icao}`, 'icao').distinct(true)
+          .where(`(m.${iata} = :code OR m.${icao} = :code) AND m.${iata} IS NOT NULL AND m.${icao} IS NOT NULL`, { code })
+          .getRawMany()),
+    );
+    return [...new Set([code, ...pairs.flat().flatMap((p: any) => [p.iata, p.icao])])];
+  }
+
+  /**
+   * US-009: reliability of one route (origin → destination, IATA or ICAO codes), for all airlines
+   * together and per airline. Departure movements only, so each flight is counted once.
+   * Flights analyzed = completed + cancelled; scores need MIN_FLIGHTS completed flights.
+   */
+  async routeAnalytics(from: string, to: string) {
+    const now = Date.now();
+    const [fromCodes, toCodes] = await Promise.all([this.airportCodes(from), this.airportCodes(to)]);
+    const onRoute = (qb: any) => qb
+      .where('m.direction = :dir', { dir: 'Departure' })
+      .andWhere('(m.airport_iata IN (:...fromCodes) OR m.airport_icao IN (:...fromCodes))', { fromCodes })
+      .andWhere('(m.other_iata IN (:...toCodes) OR m.other_icao IN (:...toCodes))', { toCodes })
+      // Cancellations count once their scheduled time has passed, like completed flights.
+      .andWhere(`((${COMPLETED}) OR (m.cancelled = true AND m.scheduled <= :now))`, { now });
+    const withStats = (qb: any) => qb
+      .addSelect(`COUNT(*) FILTER (WHERE ${COMPLETED})`, 'observed')
+      .addSelect(`SUM(CASE WHEN m.delay_min < ${DELAYED_MIN} THEN 1 ELSE 0 END) FILTER (WHERE ${COMPLETED})`, 'on_time')
+      .addSelect(`AVG(GREATEST(m.delay_min, 0)) FILTER (WHERE ${COMPLETED})`, 'avg_delay')
+      .addSelect(`STDDEV(GREATEST(m.delay_min, 0)) FILTER (WHERE ${COMPLETED})`, 'stddev_delay')
+      .addSelect(`COUNT(*) FILTER (WHERE m.cancelled = true)`, 'cancelled');
+
+    const summaryRow = await withStats(onRoute(this.repo.createQueryBuilder('m')).select('MIN(m.scheduled)', 'since'))
+      .getRawOne();
+    const airlineRows = await withStats(onRoute(this.repo.createQueryBuilder('m'))
+      .select('m.airline_iata', 'iata')
+      .addSelect('MAX(m.airline_name)', 'name'))
+      .andWhere('m.airline_iata IS NOT NULL')
+      .groupBy('m.airline_iata')
+      .getRawMany();
+
+    const summary = reliabilityMetrics(summaryRow ?? {});
+    const airlines = airlineRows.map((r: any) => {
+      const m = reliabilityMetrics(r);
+      const score = m.completed >= MIN_FLIGHTS
+        ? computeScore(m.flights, m.onTimePct, m.avgDelay, m.stddev, m.cancellationRate)
+        : null;
+      return {
+        iata: r.iata as string, name: (r.name as string | null) ?? null,
+        flights: m.flights, completed: m.completed,
+        onTimePct: m.onTimePct, avgDelay: m.avgDelay, cancellationRate: m.cancellationRate, score,
+      };
+    });
+
+    return {
+      from, to,
+      since: summaryRow?.since != null ? Number(summaryRow.since) : null,
+      minFlights: MIN_FLIGHTS,
+      summary: { flights: summary.flights, avgDelay: summary.avgDelay, onTimePct: summary.onTimePct, cancellationRate: summary.cancellationRate },
+      airlines: airlines
+        .filter(a => a.score !== null)
+        .sort((a, b) => (b.score! - a.score!) || (b.flights - a.flights)),
+      insufficient: airlines
+        .filter(a => a.score === null)
+        .sort((a, b) => b.flights - a.flights)
+        .map(({ iata, name, flights, completed }) => ({ iata, name, flights, completed })),
+    };
   }
 
   async airlineTrend(iata: string, months: number): Promise<unknown> {

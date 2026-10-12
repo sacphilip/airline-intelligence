@@ -1,3 +1,5 @@
+import type { RouteAnalytics } from './types';
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3100';
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -29,6 +31,9 @@ export const api = {
 
   route: (from: string, to: string, date: string) =>
     apiFetch<any>(`/api/route?from=${from}&to=${to}&date=${date}`),
+
+  routeAnalytics: (from: string, to: string) =>
+    apiFetch<RouteAnalytics>(`/api/route/analytics?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
   delays: (airport: string) =>
     apiFetch<any>(`/api/delays?airport=${airport}`),

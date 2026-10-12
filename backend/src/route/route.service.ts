@@ -9,6 +9,7 @@ import { MovementRepository, legToMovements } from '../movement/movement.reposit
 
 const SEARCH_TTL = 15 * 60_000;
 const DEPARTURES_TTL = 30 * 60_000;
+const ROUTE_ANALYTICS_TTL = 60 * 60_000; // history changes slowly; one query per route per hour
 
 export function parseFlightNumber(input: string | null | undefined) {
   const s = String(input ?? '').toUpperCase().replace(/[\s-]/g, '');
@@ -182,6 +183,16 @@ export class RouteService {
 
     await this.cacheManager.set(cacheKey, departures, DEPARTURES_TTL);
     return departures;
+  }
+
+  /** US-009: reliability on one route from recorded history, overall and per airline. No AeroDataBox calls. */
+  async routeAnalytics(from: string, to: string) {
+    const cacheKey = `route-analytics:${from}:${to}`;
+    const cached = await this.cacheManager.get<any>(cacheKey);
+    if (cached) return cached;
+    const result = await this.movements.routeAnalytics(from, to);
+    await this.cacheManager.set(cacheKey, result, ROUTE_ANALYTICS_TTL);
+    return result;
   }
 
   async searchRoute(from: string, to: string, date: string) {

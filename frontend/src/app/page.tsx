@@ -20,6 +20,7 @@ export default function Home() {
   const [pendingDelaysAirport, setPendingDelaysAirport] = useState<string | null>(null);
   const [pendingFlightNumber, setPendingFlightNumber]   = useState<string | null>(null);
   const [pendingAirlineIata, setPendingAirlineIata]     = useState<string | null>(null);
+  const [pendingRoute, setPendingRoute]                 = useState<{ from: string; to: string } | null>(null);
   const [dark, setDark] = useState(true);
 
   useEffect(() => {
@@ -33,6 +34,11 @@ export default function Home() {
       if (['map', 'flight', 'delays', 'airline'].includes(tab)) setActiveTab(tab);
       if (tab === 'flight'  && parts[1]) setPendingFlightNumber(parts[1]);
       if (tab === 'airline' && parts[1]) setPendingAirlineIata(parts[1]);
+      // US-009: #route/BLR/DEL opens route analytics in the Find Flight tab
+      if (tab === ('route' as string) && parts[1] && parts[2]) {
+        setActiveTab('flight');
+        setPendingRoute({ from: parts[1].toUpperCase(), to: parts[2].toUpperCase() });
+      }
     };
     followHash();
     window.addEventListener('hashchange', followHash);
@@ -101,7 +107,8 @@ export default function Home() {
       <div className="flex-1 overflow-hidden">
         <div className={activeTab === 'map'    ? 'h-full' : 'hidden'}><MapTab onOpenDelays={openDelays} isActive={activeTab === 'map'} /></div>
         <div className={activeTab === 'flight' ? 'h-full overflow-auto' : 'hidden'}>
-          <FlightSearchTab initialNumber={pendingFlightNumber} onConsumeNumber={() => setPendingFlightNumber(null)} />
+          <FlightSearchTab initialNumber={pendingFlightNumber} onConsumeNumber={() => setPendingFlightNumber(null)}
+            initialRoute={pendingRoute} onConsumeRoute={() => setPendingRoute(null)} />
         </div>
         <div className={activeTab === 'delays' ? 'h-full overflow-auto' : 'hidden'}>
           <DelaysTab initialAirport={pendingDelaysAirport} onConsumeAirport={() => setPendingDelaysAirport(null)} />
