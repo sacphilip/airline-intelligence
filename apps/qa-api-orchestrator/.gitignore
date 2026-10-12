@@ -1,0 +1,4 @@
+dist/
+*.tgz
+reports/
+test-results/
