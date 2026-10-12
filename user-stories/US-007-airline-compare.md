@@ -17,9 +17,11 @@
 
 | Rank | Airline | Score | On-time | Avg delay | Cancellation |
 |------|---------|-------|---------|-----------|--------------|
-| 1 | IndiGo (6E) | 86 | 84% | 18 min | 1.2% |
-| 2 | Air India (AI) | 71 | 72% | 24 min | 2.1% |
-| 3 | SpiceJet (SG) | 64 | 65% | 31 min | 3.4% |
+| 1 | IndiGo (6E) | 80 | 84% | 18 min | 1.2% |
+| 2 | Air India (AI) | 69 | 72% | 24 min | 2.1% |
+| 3 | SpiceJet (SG) | 60 | 65% | 31 min | 3.4% |
+
+Scores assume delay standard deviations of 16, 24 and 30 min respectively.
 
 ## Reliability Score formula
 
