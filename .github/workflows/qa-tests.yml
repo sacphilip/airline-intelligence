@@ -1,0 +1,218 @@
+name: QA Tests
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+# Cancel stale runs for the same ref (same PR or same branch push)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job A — UI Automation
+# Tests run against a Playwright-managed Next.js dev server.
+# All backend API calls are intercepted with page.route() mocks, so no
+# backend, database, or Redis is required for this job.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  ui-tests:
+    name: UI Automation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI tests
+        run: npm test
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-playwright-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload screenshots and traces
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-test-results
+          path: test-results/
+          retention-days: 7
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job B — API Automation
+# Spins up PostgreSQL and Redis as service containers, builds the NestJS
+# backend, waits for it to be ready, then runs the QA API Orchestrator
+# against each user story in sequence.
+# ─────────────────────────────────────────────────────────────────────────────
+  api-tests:
+    name: API Automation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flight_tracker
+          POSTGRES_PASSWORD: flight_tracker
+          POSTGRES_DB: flight_tracker
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install orchestrator dependencies
+        # npm install (not ci) in case package-lock.json is not yet committed
+        run: npm install
+        working-directory: apps/qa-api-orchestrator
+
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      - name: Start backend
+        # Run in the background; collector is disabled (no COLLECT_AIRPORTS)
+        run: node dist/main &
+        working-directory: backend
+        env:
+          PORT: 3100
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          FRONTEND_URL: http://localhost:3000
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+
+      - name: Wait for backend to be ready
+        run: |
+          echo "Waiting for backend at http://localhost:3100/api-docs-json ..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/api-docs-json > /dev/null 2>&1; then
+              echo "Backend is ready after ${i} attempts"
+              exit 0
+            fi
+            echo "  attempt $i/30 — retrying in 2 s"
+            sleep 2
+          done
+          echo "ERROR: backend did not become ready within 60 s"
+          exit 1
+
+      # Each user story is a separate step so failures are individually visible
+      # in the GitHub Actions UI. The job fails on the first failing story.
+
+      - name: API — US-001 Search by flight number
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-001-search-by-flight-number.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-002 Search by route
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-002-search-by-route.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-003 Flight card
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-003-flight-card.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-005 Flight history
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-005-flight-history.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-006 Airline profile
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-006-airline-profile.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-007 Airline rankings
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-007-airline-compare.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: API — US-008 Reliability trend
+        working-directory: apps/qa-api-orchestrator
+        run: npm run qa ../../user-stories/US-008-reliability-trend.md
+        env:
+          API_BASE_URL: http://localhost:3100
+          OPENAPI_URL: http://localhost:3100/api-docs-json
+
+      - name: Upload API test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-test-reports
+          path: apps/qa-api-orchestrator/reports/
+          retention-days: 14
