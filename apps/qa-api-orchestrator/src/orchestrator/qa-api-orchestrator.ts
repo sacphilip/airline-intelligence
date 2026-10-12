@@ -1,15 +1,16 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join, basename } from 'path';
+import { basename, join } from 'path';
 import { analyzeRequirements } from '../agents/requirement-analyzer';
 import { discoverApi } from '../agents/api-discovery';
 import { designTests } from '../agents/test-designer';
 import { generateTests } from '../agents/test-generator';
 import { analyzeFailures } from '../agents/failure-analyzer';
 import { healTests } from '../agents/test-healer';
+import { analyzePreTestCoverage, buildPostExecutionReport } from '../agents/coverage-analyzer';
 import { runTests } from '../playwright/executor';
 import { OrchestratorState } from '../schemas/state';
+import { writeGithubSummary } from '../github-summary';
 
-const ROOT = join(__dirname, '../..');
 const API_BASE = process.env.API_BASE_URL ?? 'http://localhost:3100';
 
 function log(phase: string, message: string): void {
@@ -59,59 +60,79 @@ export async function runOrchestrator(storyPath: string): Promise<OrchestratorSt
   }
 
   // Phase 3 — Test Design (rule-based)
-  log('3/8 TEST DESIGN', 'Designing test cases…');
+  log('3/10 TEST DESIGN', 'Designing test cases…');
   state.testDesign = designTests(state.requirements, state.apiContract, storyContent);
-  log('3/8 TEST DESIGN', `Designed ${state.testDesign.testCases.length} test cases`);
+  log('3/10 TEST DESIGN', `Designed ${state.testDesign.testCases.length} test cases`);
 
-  // Phase 4 — Test Generation (template-based TypeScript)
-  log('4/8 TEST GENERATION', 'Generating Playwright test file…');
+  // Phase 4 — Pre-test Coverage Gap Analysis
+  log('4/10 COVERAGE GAPS', 'Analysing coverage gaps before test generation…');
+  state.preCoverage = analyzePreTestCoverage(state.requirements, state.testDesign);
+  log('4/10 COVERAGE GAPS', `${state.preCoverage.coveragePercent}% requirement coverage — ${state.preCoverage.gaps.length} gap(s) identified`);
+  if (state.preCoverage.gaps.length > 0) {
+    for (const gap of state.preCoverage.gaps) {
+      log('4/10 COVERAGE GAPS', `  ⚠ [${gap.gapType}] ${gap.recommendation}`);
+    }
+  }
+
+  // Phase 5 — Test Generation (template-based TypeScript)
+  log('5/10 TEST GENERATION', 'Generating Playwright test file…');
   const testSource = generateTests(state.testDesign, state.apiContract);
-  const generatedDir = join(ROOT, 'tests/generated');
+  const generatedDir = join(process.cwd(), 'tests/generated');
   mkdirSync(generatedDir, { recursive: true });
   const testFileName = `${storyId.toLowerCase()}.spec.ts`;
   const testFilePath = join(generatedDir, testFileName);
   writeFileSync(testFilePath, testSource, 'utf-8');
   state.generatedTestPath = testFilePath;
-  log('4/8 TEST GENERATION', `Written to ${testFilePath}`);
+  log('5/10 TEST GENERATION', `Written to ${testFilePath}`);
 
-  // Phase 5 — First Execution
-  log('5/8 FIRST RUN', 'Running tests…');
+  // Phase 6 — First Execution
+  log('6/10 FIRST RUN', 'Running tests…');
   state.firstRun = runTests(testFilePath);
-  log('5/8 FIRST RUN', `${state.firstRun.passed}/${state.firstRun.total} passed`);
+  log('6/10 FIRST RUN', `${state.firstRun.passed}/${state.firstRun.total} passed`);
 
   if (state.firstRun.failed === 0) {
     log('RESULT', 'All tests passed on first run.');
     state.finalRun = state.firstRun;
+    state.coverageReport = buildPostExecutionReport(state.requirements, state.testDesign, state.finalRun, state.preCoverage.gaps);
     printSummary(state);
+    writeGithubSummary(state);
     return state;
   }
 
-  // Phase 6 — Failure Analysis (rule-based)
-  log('6/8 ANALYSIS', `Analysing ${state.firstRun.failed} failure(s)…`);
+  // Phase 7 — Failure Analysis (rule-based)
+  log('7/10 ANALYSIS', `Analysing ${state.firstRun.failed} failure(s)…`);
   state.analysis = analyzeFailures(state.firstRun);
   const healableCount = state.analysis.failures.filter(f => f.healable).length;
-  log('6/8 ANALYSIS', `${healableCount} healable, ${state.analysis.failures.length - healableCount} application bugs`);
+  log('7/10 ANALYSIS', `${healableCount} healable, ${state.analysis.failures.length - healableCount} application bugs`);
 
   if (!state.analysis.anyHealable) {
     log('RESULT', 'No healable failures — review application bugs manually.');
     state.finalRun = state.firstRun;
+    state.coverageReport = buildPostExecutionReport(state.requirements, state.testDesign, state.finalRun, state.preCoverage.gaps);
     printSummary(state);
+    writeGithubSummary(state);
     return state;
   }
 
-  // Phase 7 — Healing (pattern-based fixes)
-  log('7/8 HEALING', 'Applying test fixes…');
+  // Phase 8 — Healing (pattern-based fixes)
+  log('8/10 HEALING', 'Applying test fixes…');
   const healed = healTests(testSource, state.analysis);
   writeFileSync(testFilePath, healed, 'utf-8');
   state.healAttempted = true;
-  log('7/8 HEALING', 'Test file updated');
+  log('8/10 HEALING', 'Test file updated');
 
-  // Phase 8 — Final Execution
-  log('8/8 FINAL RUN', 'Re-running healed tests…');
+  // Phase 9 — Final Execution
+  log('9/10 FINAL RUN', 'Re-running healed tests…');
   state.finalRun = runTests(testFilePath);
-  log('8/8 FINAL RUN', `${state.finalRun.passed}/${state.finalRun.total} passed`);
+  log('9/10 FINAL RUN', `${state.finalRun.passed}/${state.finalRun.total} passed`);
+
+  // Phase 10 — Post-execution Coverage Report
+  log('10/10 COVERAGE REPORT', 'Building post-execution coverage report…');
+  state.coverageReport = buildPostExecutionReport(state.requirements, state.testDesign, state.finalRun, state.preCoverage.gaps);
+  log('10/10 COVERAGE REPORT', `Coverage score: ${state.coverageReport.coverageScore}% — ${state.coverageReport.verdict}`);
 
   printSummary(state);
+  writeGithubSummary(state);
   return state;
 }
 
@@ -143,4 +164,34 @@ function printSummary(state: OrchestratorState): void {
     }
     console.log('');
   }
+
+  const report = state.coverageReport;
+  if (!report) return;
+
+  const verdictIcon = report.verdict === 'FULL' ? '✅' : report.verdict === 'PARTIAL' ? '⚠️' : '❌';
+  console.log('─'.repeat(60));
+  console.log(`  Coverage Report — ${verdictIcon} ${report.verdict}  (${report.coverageScore}%)`);
+  console.log('─'.repeat(60));
+
+  for (const [cat, cov] of Object.entries(report.byCategory)) {
+    if (cov.total === 0) continue;
+    const bar = '█'.repeat(Math.round(cov.percent / 10)) + '░'.repeat(10 - Math.round(cov.percent / 10));
+    console.log(`  ${cat.padEnd(12)} ${bar} ${cov.covered}/${cov.total} (${cov.percent}%)`);
+  }
+
+  if (report.untestedRequirements.length > 0) {
+    console.log('\n  Untested requirements:');
+    for (const r of report.untestedRequirements) {
+      console.log(`    ○ [${r.type}] ${r.description}`);
+    }
+  }
+
+  if (report.remainingGaps.length > 0) {
+    console.log('\n  Coverage gaps:');
+    for (const g of report.remainingGaps) {
+      console.log(`    ⚠ ${g.recommendation}`);
+    }
+  }
+
+  console.log('═'.repeat(60) + '\n');
 }
