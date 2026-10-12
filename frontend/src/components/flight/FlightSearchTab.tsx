@@ -5,12 +5,19 @@ import { api } from '@/lib/api';
 import { SearchResult, SearchLeg } from '@/lib/types';
 import { flightStatus, flightTimeline, fmtDelayMinutes, DEPARTED } from '@/lib/flight-status';
 import { airportCode, delayClass, fmtClock, fmtDay, todayLocal, DELAYED_MIN } from '@/lib/format';
+import { RouteAnalytics } from './RouteAnalytics';
 
 const AIRPORT_RE = /^[A-Z0-9]{3,4}$/;
 
-interface Props { initialNumber: string | null; onConsumeNumber: () => void }
+interface Props {
+  initialNumber: string | null;
+  onConsumeNumber: () => void;
+  // US-009: from a #route/BLR/DEL link
+  initialRoute?: { from: string; to: string } | null;
+  onConsumeRoute?: () => void;
+}
 
-export function FlightSearchTab({ initialNumber, onConsumeNumber }: Props) {
+export function FlightSearchTab({ initialNumber, onConsumeNumber, initialRoute = null, onConsumeRoute }: Props) {
   const [mode, setMode] = useState<'number' | 'route'>('number');
   const [input, setInput] = useState('');
   const [from, setFrom] = useState('');
@@ -19,6 +26,8 @@ export function FlightSearchTab({ initialNumber, onConsumeNumber }: Props) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState('');
+  // The route whose analytics are shown; independent of the day's flight list and its errors.
+  const [analyticsRoute, setAnalyticsRoute] = useState<{ from: string; to: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -33,23 +42,36 @@ export function FlightSearchTab({ initialNumber, onConsumeNumber }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialNumber]);
 
+  useEffect(() => {
+    if (initialRoute) {
+      setMode('route');
+      setFrom(initialRoute.from);
+      setTo(initialRoute.to);
+      onConsumeRoute?.();
+      handleRoute(initialRoute.from, initialRoute.to);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRoute]);
+
   async function handleSearch(numberOverride?: string) {
     const q = (numberOverride ?? input).trim().toUpperCase().replace(/\s+/g, ' ');
     if (!q) return;
     setLoading(true); setError(''); setResult(null);
     try { setResult(await api.search(q, date !== todayLocal() ? date : undefined)); }
-    catch (err: any) { setError(err.data?.error ?? err.message ?? 'Search failed'); }
+    catch (err: any) { setError(err.message ?? 'Search failed'); } // apiFetch puts the server's message here; data.error is only a code
     finally { setLoading(false); }
   }
 
-  async function handleRoute() {
-    const f = from.trim().toUpperCase(), t = to.trim().toUpperCase();
+  async function handleRoute(fromOverride?: string, toOverride?: string) {
+    const f = (fromOverride ?? from).trim().toUpperCase(), t = (toOverride ?? to).trim().toUpperCase();
     if (!AIRPORT_RE.test(f) || !AIRPORT_RE.test(t)) { setError('Enter 3–4 letter airport codes'); return; }
+    if (f === t) { setError('Departure and arrival airports must be different'); return; }
+    setAnalyticsRoute({ from: f, to: t });
     setLoading(true); setError(''); setResult(null);
     try {
       const data = await api.route(f, t, date);
       setResult({ query: `${f} → ${t}`, source: data.source ?? 'aerodatabox', scheduleAvailable: true, legs: data.flights ?? [] });
-    } catch (err: any) { setError(err.data?.error ?? err.message ?? 'Route search failed'); }
+    } catch (err: any) { setError(err.message ?? 'Route search failed'); }
     finally { setLoading(false); }
   }
 
@@ -126,6 +148,7 @@ export function FlightSearchTab({ initialNumber, onConsumeNumber }: Props) {
           <FlightHistory number={leg.number} available={result.scheduleAvailable} />
         </div>
       ))}
+      {mode === 'route' && analyticsRoute && <RouteAnalytics from={analyticsRoute.from} to={analyticsRoute.to} />}
       {result && mode === 'route' && <RouteTable legs={result.legs} />}
     </div>
   );
@@ -512,14 +535,15 @@ function RouteTable({ legs }: { legs: any[] }) {
     </span>
   );
 
-  const FILTERS: { id: StatusFilter; label: string; count: number; cls: string }[] = [
+  type FilterChip = { id: StatusFilter; label: string; count: number; cls: string };
+  const FILTERS: FilterChip[] = ([
     { id: 'all',       label: 'All',       count: total,     cls: '' },
     { id: 'ontime',    label: 'On time',   count: onTime,    cls: 'text-emerald-600 dark:text-emerald-400' },
     { id: 'delayed',   label: 'Delayed',   count: delayed,   cls: 'text-amber-600 dark:text-amber-400' },
     { id: 'airborne',  label: 'Airborne',  count: airborne,  cls: 'text-sky-600 dark:text-sky-400' },
     { id: 'landed',    label: 'Landed',    count: landed,    cls: 'text-emerald-600 dark:text-emerald-400' },
     { id: 'cancelled', label: 'Cancelled', count: cancelled, cls: 'text-red-600 dark:text-red-400' },
-  ].filter(f => f.id === 'all' || f.count > 0);
+  ] as FilterChip[]).filter(f => f.id === 'all' || f.count > 0); // typed before filter() so ids stay StatusFilter
 
   return (
     <div className="space-y-3 animate-fade-in">

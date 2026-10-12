@@ -112,3 +112,28 @@ export interface ChainLeg {
   dep: { airport: Airport | null; sched: number | null; best: number | null; actual: boolean; terminal: string | null; gate: string | null };
   arr: { airport: Airport | null; sched: number | null; best: number | null; actual: boolean; terminal: string | null; gate: string | null };
 }
+
+// US-009 — route analytics (GET /api/route/analytics)
+export interface RouteReliability {
+  flights: number;                 // completed + cancelled
+  avgDelay: number | null;         // minutes; early flights count as 0
+  onTimePct: number | null;        // 0..1, of completed flights
+  cancellationRate: number | null; // 0..1
+}
+
+export interface RouteAirline extends RouteReliability {
+  iata: string;
+  name: string | null;
+  completed: number;
+  score: number;                   // Reliability Score (US-006 formula), on this route only
+}
+
+export interface RouteAnalytics {
+  from: string;
+  to: string;
+  since: number | null;            // epoch ms of the earliest flight counted
+  minFlights: number;
+  summary: RouteReliability;
+  airlines: RouteAirline[];        // scored, best first
+  insufficient: { iata: string; name: string | null; flights: number; completed: number }[];
+}

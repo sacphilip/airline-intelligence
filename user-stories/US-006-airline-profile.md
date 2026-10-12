@@ -20,13 +20,16 @@
 ## Example
 
 **IndiGo (6E)**  
-Reliability Score: 86/100
+Reliability Score: 80/100
 
 | Metric | Value |
 |--------|-------|
 | On-time | 84% |
 | Avg delay | 18 min |
 | Cancellation | 1.2% |
+| Delay std dev | 16 min |
+
+Worked out: 0.84 × 40 + 20 × (1 − 0.012 × 5) + 25 × (1 − 18/60) + 15 × (1 − 16/45) = 33.6 + 18.8 + 17.5 + 9.7 = 79.6 → 80.
 
 ## Reliability Score formula
 

@@ -27,7 +27,7 @@ function ScoreRing({ score }: { score: number }) {
 
 // ── Score badge ───────────────────────────────────────────────────────────────
 
-function ScoreBadge({ score }: { score: number }) {
+export function ScoreBadge({ score }: { score: number }) {
   const color = score >= 80
     ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
     : score >= 60
