@@ -1,22 +1,42 @@
 /**
  * US-006 — Airline profile
+ *
+ * Runs against the real backend. The profile is built from the flights the
+ * backend has recorded, so it changes over time; each test checks the UI
+ * against the backend's response for the same lookup.
  */
 
 import { test, expect } from '../fixtures/test.fixture';
 import { AppPage } from '../pages/AppPage';
 import { AirlinePage } from '../pages/AirlinePage';
 import { FlightSearchPage } from '../pages/FlightSearchPage';
-import { MOCK_AIRLINE_PROFILE, MOCK_SEARCH_RESULT, MOCK_FLIGHT_HISTORY, TEST_DATA } from '../data/mock-responses';
+import { TEST_DATA } from '../data/test-data';
+import { captureApi, pickLiveFlight } from '../support/live';
 
-const API_BASE = 'http://localhost:3100';
+// A real airline flying the test route today, and one of its flight numbers.
+let airline: { name: string; iata: string };
+let flightNumber: string;
+
+test.beforeAll(async ({ playwright }) => {
+  const request = await playwright.request.newContext();
+  ({ number: flightNumber, airline } = await pickLiveFlight(request, TEST_DATA.routeFrom, TEST_DATA.routeTo));
+  await request.dispose();
+});
+
+async function lookup(airlinePage: AirlinePage, iata = airline.iata) {
+  const response = captureApi(airlinePage.page, '/api/airline/profile');
+  await airlinePage.lookup(iata);
+  const { status, body } = await response;
+  expect(status, `profile ${iata}`).toBe(200);
+  await airlinePage.waitForProfile();
+  return body;
+}
+
+// The same formatting AirlineTab uses for its key metrics.
+const fmtPct = (r: number | null) => (r == null ? '—' : `${(r * 100).toFixed(1)}%`);
+const fmtMin = (n: number | null) => (n == null ? '—' : `${n} min`);
 
 test.describe('US-006 — Airline profile', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route(`${API_BASE}/api/airline/profile*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_AIRLINE_PROFILE) })
-    );
-  });
-
   test('TC-006-01: Airlines tab shows IATA search form', async ({ airlinePage }) => {
     await expect(airlinePage.iataInput).toBeVisible();
     await expect(airlinePage.searchButton).toBeVisible();
@@ -27,103 +47,109 @@ test.describe('US-006 — Airline profile', () => {
     await expect(airlinePage.loadingText).toBeHidden();
   });
 
-  test('TC-006-03: valid IATA lookup shows airline name', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.locator('div.text-xl').filter({ hasText: TEST_DATA.validAirlineName })).toBeVisible();
+  test('TC-006-03: lookup shows the airline name the backend returned', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    await expect(airlinePage.page.locator('div.text-xl').filter({ hasText: p.airline?.name ?? p.iata })).toBeVisible();
   });
 
-  test('TC-006-04: profile shows Reliability Score number and /100', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByText(`${MOCK_AIRLINE_PROFILE.score}`, { exact: true })).toBeVisible();
-    await expect(airlinePage.page.getByText('/100')).toBeVisible();
-  });
-
-  test('TC-006-05: profile shows on-time percentage', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByText(/84\.0%/)).toBeVisible();
-  });
-
-  test('TC-006-06: profile shows average delay value', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByText(/18 min/)).toBeVisible();
-  });
-
-  test('TC-006-07: Reliability breakdown section is visible', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByRole('heading', { name: 'Reliability score breakdown' })).toBeVisible();
-  });
-
-  test('TC-006-08: Delay analysis section is visible', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByText('Delay analysis')).toBeVisible();
-  });
-
-  test('TC-006-09: Routes section is visible', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByRole('heading', { name: 'Routes' })).toBeVisible();
-  });
-
-  test('TC-006-10: Airports section is visible', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByText('Airports')).toBeVisible();
-  });
-
-  test('TC-006-11: Fleet section is visible', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    await expect(airlinePage.page.getByRole('heading', { name: /Fleet/ })).toBeVisible();
-  });
-
-  test('TC-006-12: fleet section shows registration numbers', async ({ airlinePage }) => {
-    await airlinePage.lookup(TEST_DATA.validAirlineIata);
-    await airlinePage.waitForProfile();
-    for (const reg of MOCK_AIRLINE_PROFILE.regs) {
-      await expect(airlinePage.page.getByText(reg)).toBeVisible();
+  test('TC-006-04: profile shows the reliability score, or "Not enough data"', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    if (p.score != null) {
+      await expect(airlinePage.page.getByText(String(p.score), { exact: true }).first()).toBeVisible();
+      await expect(airlinePage.page.getByText('/100')).toBeVisible();
+    } else {
+      await expect(airlinePage.page.getByText('Not enough data')).toBeVisible();
     }
   });
 
-  test('TC-006-13: hash routing #airline/6E navigates to tab and auto-looks up', async ({ page }) => {
-    const app = new AppPage(page);
-    await app.gotoViaHash(`airline/${TEST_DATA.validAirlineIata}`);
-    await app.expectActiveTab('airline');
-    const airlinePage = new AirlinePage(page);
-    await airlinePage.waitForProfile();
-    await expect(page.locator('div.text-xl').filter({ hasText: TEST_DATA.validAirlineName })).toBeVisible();
+  test('TC-006-05: profile shows the on-time percentage from the backend', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    await expect(airlinePage.overviewSection).toContainText(fmtPct(p.onTimePct));
   });
 
-  test('TC-006-14: API error shows error banner', async ({ page, app }) => {
-    await page.route(`${API_BASE}/api/airline/profile*`, route =>
-      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'Airline not found' }) })
-    );
-    await app.navigateTo('airline');
-    const airlinePage = new AirlinePage(page);
-    await airlinePage.lookup('ZZ');
-    await expect(airlinePage.loadingText).toBeHidden({ timeout: 10_000 });
-    await expect(airlinePage.errorBanner).toBeVisible();
+  test('TC-006-06: profile shows the average delay from the backend', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    await expect(airlinePage.overviewSection).toContainText(fmtMin(p.avgDelay));
+  });
+
+  test('TC-006-07: score breakdown appears exactly when the backend has a score', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    const heading = airlinePage.page.getByRole('heading', { name: 'Reliability score breakdown' });
+    if (p.score != null) await expect(heading).toBeVisible();
+    else await expect(heading).toHaveCount(0);
+  });
+
+  test('TC-006-08: Delay analysis appears exactly when flights have been observed', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    const heading = airlinePage.page.getByText('Delay analysis');
+    if (p.observed > 0) await expect(heading).toBeVisible();
+    else await expect(heading).toHaveCount(0);
+  });
+
+  test('TC-006-09: Routes section lists the backend\'s top routes', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    test.skip(!p.topRoutes?.length, `No recorded routes for ${airline.iata} yet`);
+    await expect(airlinePage.page.getByRole('heading', { name: 'Routes' })).toBeVisible();
+    const r = p.topRoutes[0];
+    await expect(airlinePage.page.getByText(`${r.from} → ${r.to}`).first()).toBeVisible();
+  });
+
+  test('TC-006-10: Airports section lists the backend\'s top airports', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    test.skip(!p.topAirports?.length, `No recorded airports for ${airline.iata} yet`);
+    await expect(airlinePage.page.getByText('Airports', { exact: true })).toBeVisible();
+    await expect(airlinePage.section('Airports')).toContainText(p.topAirports[0].iata);
+  });
+
+  test('TC-006-11: Fleet section counts the aircraft the backend returned', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    test.skip(!p.regs?.length, `No recorded aircraft for ${airline.iata} yet`);
+    await expect(airlinePage.page.getByRole('heading', { name: `Fleet · ${p.regs.length} aircraft` })).toBeVisible();
+  });
+
+  test('TC-006-12: fleet section shows the backend\'s registration numbers', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage);
+    test.skip(!p.regs?.length, `No recorded aircraft for ${airline.iata} yet`);
+    for (const reg of p.regs.slice(0, 5)) {
+      await expect(airlinePage.page.getByText(reg, { exact: true })).toBeVisible();
+    }
+  });
+
+  test('TC-006-13: hash routing #airline/IATA navigates to tab and auto-looks up', async ({ page }) => {
+    const response = captureApi(page, '/api/airline/profile');
+    const app = new AppPage(page);
+    await app.gotoViaHash(`airline/${airline.iata}`);
+    await app.expectActiveTab('airline');
+    const { status, body } = await response;
+    expect(status).toBe(200);
+    await new AirlinePage(page).waitForProfile();
+    await expect(page.locator('div.text-xl').filter({ hasText: body.airline?.name ?? body.iata })).toBeVisible();
+  });
+
+  // The real backend answers an unknown airline with an empty profile (200), not an error.
+  test('TC-006-14: an unknown airline shows an empty profile with "Not enough data"', async ({ airlinePage }) => {
+    const p = await lookup(airlinePage, TEST_DATA.unknownAirlineIata);
+    expect(p.airline, 'ZZ should not match a real airline').toBeNull();
+    expect(p.observed).toBe(0);
+
+    await expect(airlinePage.page.locator('div.text-xl').filter({ hasText: TEST_DATA.unknownAirlineIata })).toBeVisible();
+    await expect(airlinePage.page.getByText('Not enough data')).toBeVisible();
+    await expect(airlinePage.page.getByText('Based on 0 observed flights')).toBeVisible();
+    await expect(airlinePage.errorBanner).toHaveCount(0);
   });
 
   test('TC-006-15: airline name click in FlightCard navigates to Airlines tab', async ({ page }) => {
-    await page.route(`${API_BASE}/api/search*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SEARCH_RESULT) })
-    );
-    await page.route(`${API_BASE}/api/flight/history*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_FLIGHT_HISTORY) })
-    );
     const app = new AppPage(page);
     await app.goto();
     await app.navigateTo('flight');
     const flightSearch = new FlightSearchPage(page);
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
+    const search = captureApi(page, '/api/search');
+    await flightSearch.searchByNumber(flightNumber);
+    const { body } = await search;
     await flightSearch.waitForSearchComplete();
-    await page.getByRole('button', { name: TEST_DATA.validAirlineName }).click();
-    await expect(page).toHaveURL(/#airline\/6E/);
+    const leg = body.legs[0];
+    await page.getByRole('button', { name: leg.airline.name }).click();
+    await expect(page).toHaveURL(new RegExp(`#airline/${leg.airline.iata}$`));
+    await app.expectActiveTab('airline');
   });
 });

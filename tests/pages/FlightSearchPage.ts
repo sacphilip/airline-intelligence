@@ -76,6 +76,24 @@ export class FlightSearchPage {
     return this.page.getByText(label, { exact: true });
   }
 
+  /** The value shown under an info-row label (STD, ETD, STA, ETA, Delay) on the first card. */
+  infoValue(label: string) {
+    return this.page
+      .locator('div.px-3.py-3')
+      .filter({ has: this.page.locator('span.font-bold', { hasText: new RegExp(`^${label}$`) }) })
+      .first()
+      .locator('div.tabular-nums');
+  }
+
+  /** The status pill on the first card (icon + text). */
+  get statusPill() {
+    return this.page
+      .locator('div.px-4.py-3.flex-col')
+      .filter({ has: this.page.locator('span', { hasText: /^Status$/ }) })
+      .first()
+      .locator('span.rounded-full');
+  }
+
   // ── Flight history ────────────────────────────────────────────────────────────
 
   get flightHistoryToggle() {
@@ -100,8 +118,14 @@ export class FlightSearchPage {
     return this.page.locator('button').filter({ hasText: /All|On time|Delayed|Airborne|Landed|Cancelled/i });
   }
 
+  // The day's flight list: the table with a "Dep" column. Other tables stay in the page too:
+  // the route-analytics airlines table (US-009) and the hidden Airlines tab's rankings table.
+  get routeTable() {
+    return this.page.locator('table').filter({ has: this.page.locator('th', { hasText: /^Dep/ }) });
+  }
+
   get routeTableRows() {
-    return this.page.locator('tbody tr');
+    return this.routeTable.locator('tbody tr');
   }
 
   sortableHeader(name: string) {
