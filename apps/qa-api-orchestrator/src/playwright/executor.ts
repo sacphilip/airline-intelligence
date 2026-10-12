@@ -1,0 +1,117 @@
+import { spawnSync } from 'child_process';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { join, relative } from 'path';
+import { ExecutionResult, FailedTest } from '../schemas/failure';
+
+const ROOT = join(__dirname, '../..');
+const RESULTS_PATH = join(ROOT, 'reports/results.json');
+
+export function runTests(testFilePath: string): ExecutionResult {
+  mkdirSync(join(ROOT, 'reports'), { recursive: true });
+
+  // Use a relative path so Windows backslashes don't trip up the shell
+  const relPath = relative(ROOT, testFilePath).replace(/\\/g, '/');
+
+  const result = spawnSync('npx', ['playwright', 'test', relPath], {
+    cwd: ROOT,
+    encoding: 'utf-8',
+    shell: true,
+    env: { ...process.env },
+  });
+
+  const rawOutput = (result.stdout ?? '') + (result.stderr ?? '');
+  const exitCode = result.status ?? 0;
+
+  return parseResults(rawOutput, exitCode);
+}
+
+function stripAnsi(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function parseResults(rawOutput: string, exitCode: number): ExecutionResult {
+  if (existsSync(RESULTS_PATH)) {
+    try {
+      const json = JSON.parse(readFileSync(RESULTS_PATH, 'utf-8'));
+      const allFailures: FailedTest[] = [];
+      for (const suite of json.suites ?? []) collectFailures(suite, allFailures);
+
+      // Deduplicate by title (retries produce duplicate entries)
+      const seen = new Set<string>();
+      const failures = allFailures.filter(f => {
+        if (seen.has(f.title)) return false;
+        seen.add(f.title);
+        return true;
+      });
+
+      const passed: number = json.stats?.expected ?? 0;
+      const failed: number = json.stats?.unexpected ?? 0;
+      const skipped: number = json.stats?.skipped ?? 0;
+
+      return {
+        total: passed + failed + skipped,
+        passed,
+        failed,
+        duration: json.stats?.duration ?? 0,
+        failures,
+        rawOutput,
+      };
+    } catch {
+      // fall through to text-based parsing
+    }
+  }
+
+  return parseFromText(rawOutput, exitCode);
+}
+
+function collectFailures(suite: Record<string, unknown>, acc: FailedTest[]): void {
+  for (const spec of (suite.specs as Record<string, unknown>[] | undefined) ?? []) {
+    for (const test of (spec.tests as Record<string, unknown>[] | undefined) ?? []) {
+      for (const result of (test.results as Record<string, unknown>[] | undefined) ?? []) {
+        if (result.status === 'failed' || result.status === 'timedOut') {
+          const err = result.error as Record<string, unknown> | undefined;
+          const msg = stripAnsi((err?.message as string) ?? String(result.status));
+          // Parse Expected/Received from the message body if not in dedicated fields
+          const expectedMatch = msg.match(/Expected(?:\s+value)?:\s*(\S+)/);
+          const actualMatch = msg.match(/Received(?:\s+value)?:\s*(\S+)/);
+          acc.push({
+            title: spec.title as string,
+            error: msg,
+            expected: (err?.expected as string | undefined) || expectedMatch?.[1],
+            actual: (err?.actual as string | undefined) || actualMatch?.[1],
+          });
+        }
+      }
+    }
+  }
+  for (const child of (suite.suites as Record<string, unknown>[] | undefined) ?? []) {
+    collectFailures(child, acc);
+  }
+}
+
+function parseFromText(output: string, exitCode: number): ExecutionResult {
+  const lines = output.split('\n');
+  const failures: FailedTest[] = [];
+  let currentTitle = '';
+  let currentError = '';
+
+  for (const line of lines) {
+    const failMatch = line.match(/^\s+\d+\)\s+(.+)$/);
+    if (failMatch) {
+      if (currentTitle) failures.push({ title: currentTitle, error: currentError.trim() });
+      currentTitle = failMatch[1];
+      currentError = '';
+      continue;
+    }
+    if (currentTitle) currentError += line + '\n';
+  }
+  if (currentTitle) failures.push({ title: currentTitle, error: currentError.trim() });
+
+  const passMatch = output.match(/(\d+) passed/);
+  const failMatch2 = output.match(/(\d+) failed/);
+  const passed = passMatch ? parseInt(passMatch[1], 10) : 0;
+  const failed = failMatch2 ? parseInt(failMatch2[1], 10) : (exitCode !== 0 ? 1 : 0);
+
+  return { total: passed + failed, passed, failed, duration: 0, failures, rawOutput: output };
+}

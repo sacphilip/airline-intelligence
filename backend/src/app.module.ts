@@ -42,10 +42,8 @@ import { PredictionModule } from './prediction/prediction.module';
       inject: [ConfigService],
       useFactory: async (cfg: ConfigService) => ({
         store: await redisStore({
-          socket: {
-            host: cfg.get('REDIS_HOST', 'localhost'),
-            port: Number(cfg.get('REDIS_PORT', 6379)),
-          },
+          host: cfg.get('REDIS_HOST', 'localhost'),
+          port: Number(cfg.get('REDIS_PORT', 6379)),
         }),
       }),
     }),

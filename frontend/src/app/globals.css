@@ -4,26 +4,25 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 220 20% 97%;
+    --foreground: 222 47% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --primary: 221.2 83.2% 53.3%;
+    --card-foreground: 222 47% 10%;
+    --border: 215 25% 88%;
+    --input: 215 25% 88%;
+    --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 215 20% 93%;
+    --secondary-foreground: 222 47% 20%;
+    --muted: 215 20% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 215 20% 90%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --ring: 221 83% 53%;
+    --radius: 0.6rem;
 
-    /* Altitude colour bands */
     --alt-ground: #64748b;
     --alt-1: #22c55e;
     --alt-2: #84cc16;
@@ -33,34 +32,65 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --background: 223 39% 7%;
+    --foreground: 213 31% 91%;
+    --card: 223 35% 10%;
+    --card-foreground: 213 31% 91%;
+    --border: 223 30% 18%;
+    --input: 223 30% 18%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 8%;
+    --secondary: 223 30% 15%;
+    --secondary-foreground: 213 31% 85%;
+    --muted: 223 30% 14%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 223 30% 16%;
+    --accent-foreground: 213 31% 91%;
+    --destructive: 0 63% 45%;
     --destructive-foreground: 210 40% 98%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 217 91% 60%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
-  body { @apply bg-background text-foreground; }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "kern", "liga", "calt";
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
 }
 
-/* Leaflet overrides */
+/* ── Leaflet ── */
 .leaflet-container { height: 100%; width: 100%; z-index: 0; }
+.leaflet-control-attribution { font-size: 9px !important; }
 .plane-icon { background: none; border: none; }
-.plane { transition: transform 0.3s ease; }
-.plane.selected path { filter: drop-shadow(0 0 4px #60a5fa); }
-.plane.emergency path { filter: drop-shadow(0 0 6px #ef4444); }
+.plane { transition: transform 0.4s ease; }
+.plane.selected path { filter: drop-shadow(0 0 6px #60a5fa) drop-shadow(0 0 12px #3b82f6); }
+.plane.emergency path { filter: drop-shadow(0 0 8px #ef4444); }
+
+.skeleton {
+  background: linear-gradient(90deg,
+    hsl(var(--muted)) 25%,
+    hsl(var(--accent)) 50%,
+    hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 4px;
+}
+
+/* ── Glass card ── */
+.glass {
+  background: hsl(var(--card) / 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.6);
+}
+
+/* ── Status tones ── */
+.tone-good { @apply bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300; }
+.tone-warn { @apply bg-amber-100  text-amber-800  dark:bg-amber-950  dark:text-amber-300; }
+.tone-bad  { @apply bg-red-100    text-red-800    dark:bg-red-950    dark:text-red-300; }
+.tone-live { @apply bg-sky-100    text-sky-800    dark:bg-sky-950    dark:text-sky-300; }
+.tone-neutral { @apply bg-secondary text-secondary-foreground; }

@@ -85,6 +85,44 @@ export class FlightService {
     return Math.round((eta - leg.arr.sched) / 60_000);
   }
 
+  async flightHistory(number: string, days: number): Promise<any[]> {
+    if (!this.adb.isConfigured()) return [];
+    const id = number.replace(/\s+/g, '');
+    const cacheKey = `flt-hist:${id}:${days}`;
+    const cached = await this.cacheManager.get<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const results: any[] = [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (let d = 1; d <= days; d++) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - d);
+      const dateStr = date.toISOString().slice(0, 10); // YYYY-MM-DD
+      try {
+        const legs = await this.adb.flights('number', id, dateStr);
+        if (legs.length > 0) {
+          const leg = this.adb.toLeg(legs[0]);
+          const arrDelay = leg.arr.sched != null && leg.arr.best != null
+            ? Math.round((leg.arr.best - leg.arr.sched) / 60_000)
+            : null;
+          const depDelay = leg.dep.sched != null && leg.dep.best != null
+            ? Math.round((leg.dep.best - leg.dep.sched) / 60_000)
+            : null;
+          results.push({ date: dateStr, status: leg.status, cancelled: leg.cancelled, delay: arrDelay ?? depDelay });
+        } else {
+          results.push({ date: dateStr, status: null, cancelled: false, delay: null });
+        }
+      } catch {
+        // skip this day on transient error
+      }
+    }
+
+    await this.cacheManager.set(cacheKey, results, 60 * 60_000); // 1 hour
+    return results;
+  }
+
   async lookupAircraft(params: { hex: string | null; callsign: string | null; live?: { lat: number; lon: number; groundSpeed: number | null; onGround: boolean; type: string | null } | null }) {
     const { hex, callsign, live = null } = params;
     const cacheKey = `schedule:${hex || callsign}`;

@@ -35,6 +35,18 @@ export const api = {
 
   history: () => apiFetch<any>('/api/history'),
 
+  flightHistory: (number: string, days = 7) =>
+    apiFetch<any[]>(`/api/flight/history?number=${encodeURIComponent(number)}&days=${days}`),
+
+  airlineProfile: (iata: string) =>
+    apiFetch<any>(`/api/airline/profile?iata=${encodeURIComponent(iata)}`),
+
+  airlineRankings: () =>
+    apiFetch<any[]>('/api/airline/rankings'),
+
+  airlineTrend: (iata: string, months = 9) =>
+    apiFetch<any>(`/api/airline/trend?iata=${encodeURIComponent(iata)}&months=${months}`),
+
   place: (q: string) =>
     apiFetch<{ name: string; lat: number; lon: number }>(`/api/place?q=${encodeURIComponent(q)}`),
 };

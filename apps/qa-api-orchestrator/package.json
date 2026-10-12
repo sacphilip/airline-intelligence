@@ -1,0 +1,20 @@
+{
+  "name": "qa-api-orchestrator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "qa": "tsx src/cli.ts",
+    "test": "playwright test",
+    "report": "playwright show-report reports/playwright"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "@playwright/test": "^1.49.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

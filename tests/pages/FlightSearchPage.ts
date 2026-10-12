@@ -1,0 +1,110 @@
+import { Page, expect } from '@playwright/test';
+
+export class FlightSearchPage {
+  constructor(readonly page: Page) {}
+
+  // ── Mode toggle ──────────────────────────────────────────────────────────────
+
+  async selectNumberMode() {
+    await this.page.getByRole('button', { name: /Flight number/i }).click();
+  }
+
+  async selectRouteMode() {
+    await this.page.getByRole('button', { name: /Route/i }).click();
+  }
+
+  // ── Number search inputs ─────────────────────────────────────────────────────
+
+  get flightNumberInput() {
+    return this.page.getByPlaceholder(/6E 5321/i);
+  }
+
+  get dateInput() {
+    return this.page.locator('input[type="date"]').first();
+  }
+
+  get searchButton() {
+    return this.page.getByRole('button', { name: 'Search' });
+  }
+
+  async searchByNumber(flightNumber: string, date?: string) {
+    await this.selectNumberMode();
+    await this.flightNumberInput.fill(flightNumber);
+    if (date) await this.dateInput.fill(date);
+    await this.searchButton.click();
+  }
+
+  // ── Route search inputs ──────────────────────────────────────────────────────
+
+  get fromInput() {
+    return this.page.getByPlaceholder('From (BLR)');
+  }
+
+  get toInput() {
+    return this.page.getByPlaceholder('To (DEL)');
+  }
+
+  async searchByRoute(from: string, to: string, date: string) {
+    await this.selectRouteMode();
+    await this.fromInput.fill(from);
+    await this.toInput.fill(to);
+    await this.page.locator('input[type="date"]').fill(date);
+    await this.searchButton.click();
+  }
+
+  // ── State indicators ─────────────────────────────────────────────────────────
+
+  get loadingText() {
+    return this.page.getByText('Looking up flight…');
+  }
+
+  get errorBanner() {
+    return this.page.locator('[class*="destructive"]');
+  }
+
+  async waitForSearchComplete(timeout = 20_000) {
+    await expect(this.loadingText).toBeHidden({ timeout });
+  }
+
+  // ── Flight card ──────────────────────────────────────────────────────────────
+
+  get flightCard() {
+    return this.page.locator('.rounded-xl.border').filter({ hasText: /STD|Sched/i }).first();
+  }
+
+  infoCell(label: string) {
+    return this.page.getByText(label, { exact: true });
+  }
+
+  // ── Flight history ────────────────────────────────────────────────────────────
+
+  get flightHistoryToggle() {
+    return this.page.getByRole('button', { name: /Flight history · last 7 days/i });
+  }
+
+  get flightHistoryTable() {
+    return this.page.locator('table').filter({ hasText: /Date/i });
+  }
+
+  get noHistoryMessage() {
+    return this.page.getByText('No history data available');
+  }
+
+  // ── Route table ──────────────────────────────────────────────────────────────
+
+  get statsBar() {
+    return this.page.locator('.grid.grid-cols-4');
+  }
+
+  get filterChips() {
+    return this.page.locator('button').filter({ hasText: /All|On time|Delayed|Airborne|Landed|Cancelled/i });
+  }
+
+  get routeTableRows() {
+    return this.page.locator('tbody tr');
+  }
+
+  sortableHeader(name: string) {
+    return this.page.getByRole('button', { name: new RegExp(name, 'i') }).filter({ hasText: /⇅|▲|▼/ });
+  }
+}
