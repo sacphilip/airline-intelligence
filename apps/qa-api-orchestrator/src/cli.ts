@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import 'dotenv/config';
 import { resolve } from 'path';
 import { existsSync } from 'fs';
