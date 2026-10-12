@@ -17,15 +17,41 @@ permissions:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job A — UI Automation
-# Tests run against a Playwright-managed Next.js dev server.
-# All backend API calls are intercepted with page.route() mocks, so no
-# backend, database, or Redis is required for this job.
+# Tests run against the real NestJS backend and live flight data: nothing is
+# mocked. Playwright (playwright.config.ts → webServer) builds and starts the
+# backend and the Next.js dev server; Postgres and Redis run as services.
+# Each run makes real AeroDataBox calls (roughly 6–8 units with an empty cache).
 # ─────────────────────────────────────────────────────────────────────────────
 jobs:
   ui-tests:
     name: UI Automation
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flight_tracker
+          POSTGRES_PASSWORD: flight_tracker
+          POSTGRES_DB: flight_tracker
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
 
     steps:
       - name: Checkout
@@ -39,12 +65,25 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Check the AeroDataBox key is available
+        run: |
+          if [ -z "$AERODATABOX_KEY" ]; then
+            echo "::error::Live UI tests need the AERODATABOX_KEY repository secret."
+            exit 1
+          fi
+        env:
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
 
       - name: Install root dependencies
         run: npm ci
 
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
 
       - name: Install Playwright browsers (Chromium only)
         run: npx playwright install --with-deps chromium
@@ -53,6 +92,13 @@ jobs:
         run: npm test
         env:
           CI: 'true'
+          # Read by the backend that Playwright starts (see playwright.config.ts).
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          FRONTEND_URL: http://localhost:3000
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
 
       - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4

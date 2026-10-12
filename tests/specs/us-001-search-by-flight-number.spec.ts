@@ -1,25 +1,39 @@
 /**
  * US-001 — Search by flight number
  * Traces to: AC-01..AC-05, NEG-01, NEG-02, UI-01, UI-02, UI-03, ST-01, ST-02
+ *
+ * Runs against the real backend and live flight data. A real flight operating
+ * today is picked first; each test then checks the UI against the exact
+ * response the backend returned for that search.
  */
 
 import { test, expect } from '../fixtures/test.fixture';
 import { AppPage } from '../pages/AppPage';
 import { FlightSearchPage } from '../pages/FlightSearchPage';
-import { MOCK_SEARCH_RESULT, MOCK_FLIGHT_HISTORY, TEST_DATA } from '../data/mock-responses';
+import { TEST_DATA } from '../data/test-data';
+import { captureApi, pickLiveFlight } from '../support/live';
+import { flightStatus } from '../../frontend/src/lib/flight-status';
+import { airportCode } from '../../frontend/src/lib/format';
 
-const API_BASE = 'http://localhost:3100';
+let flightNumber: string;
+
+test.beforeAll(async ({ playwright }) => {
+  const request = await playwright.request.newContext();
+  ({ number: flightNumber } = await pickLiveFlight(request, TEST_DATA.routeFrom, TEST_DATA.routeTo));
+  await request.dispose();
+});
+
+/** Search in the UI and return the leg the backend sent for the first card. */
+async function search(flightSearch: FlightSearchPage) {
+  const response = captureApi(flightSearch.page, '/api/search');
+  await flightSearch.searchByNumber(flightNumber);
+  const { status, body } = await response;
+  expect(status, `search ${flightNumber}`).toBe(200);
+  await flightSearch.waitForSearchComplete();
+  return body.legs[0];
+}
 
 test.describe('US-001 — Search by flight number', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route(`${API_BASE}/api/search*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SEARCH_RESULT) })
-    );
-    await page.route(`${API_BASE}/api/flight/history*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_FLIGHT_HISTORY) })
-    );
-  });
-
   // AC-01 — navigation
   test('TC-001-01: Find Flight tab is visible and navigable', async ({ app }) => {
     await app.navigateTo('flight');
@@ -34,37 +48,29 @@ test.describe('US-001 — Search by flight number', () => {
   });
 
   // AC-03 — happy path
-  test('TC-001-03: valid flight number returns a FlightCard with flight number and airline', async ({ flightSearch }) => {
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
-    await flightSearch.waitForSearchComplete();
-
-    await expect(flightSearch.page.getByText(TEST_DATA.validFlightNumber, { exact: true }).first()).toBeVisible();
-    // Airline name renders as a clickable button on the FlightCard
-    await expect(flightSearch.page.getByRole('button', { name: TEST_DATA.validAirlineName })).toBeVisible();
+  test('TC-001-03: a real flight number returns a FlightCard with its number and airline', async ({ flightSearch }) => {
+    const leg = await search(flightSearch);
+    await expect(flightSearch.page.getByText(leg.number, { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.page.getByRole('button', { name: leg.airline.name })).toBeVisible();
   });
 
   // AC-03 — airport codes
-  test('TC-001-04: FlightCard shows origin and destination airport codes', async ({ flightSearch }) => {
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
-    await flightSearch.waitForSearchComplete();
-
-    await expect(flightSearch.page.getByText('BLR').first()).toBeVisible();
-    await expect(flightSearch.page.getByText('DEL').first()).toBeVisible();
+  test('TC-001-04: FlightCard shows the origin and destination the backend returned', async ({ flightSearch }) => {
+    const leg = await search(flightSearch);
+    await expect(flightSearch.page.getByText(airportCode(leg.origin.airport), { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.page.getByText(airportCode(leg.destination.airport), { exact: true }).first()).toBeVisible();
   });
 
   // AC-04 — status mapping
-  test('TC-001-05: FlightCard shows "Landed" for a flight with status Arrived', async ({ flightSearch }) => {
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
-    await flightSearch.waitForSearchComplete();
-
-    await expect(flightSearch.page.getByText('Landed', { exact: true }).first()).toBeVisible();
+  test('TC-001-05: FlightCard status matches the live status from the backend', async ({ flightSearch }) => {
+    const leg = await search(flightSearch);
+    const expected = flightStatus(leg);
+    await expect(flightSearch.statusPill).toContainText(expected.text);
   });
 
   // AC-05 — timing cells
   test('TC-001-06: FlightCard shows all six info cells: STD, ETD, STA, ETA, Delay, Status', async ({ flightSearch }) => {
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
-    await flightSearch.waitForSearchComplete();
-
+    await search(flightSearch);
     for (const label of ['STD', 'ETD', 'STA', 'ETA', 'Delay', 'Status']) {
       await expect(flightSearch.page.getByText(label, { exact: true }).first()).toBeVisible();
     }
@@ -76,17 +82,16 @@ test.describe('US-001 — Search by flight number', () => {
     await expect(flightSearch.loadingText).toBeHidden();
   });
 
-  // NEG-02 — API error
-  test('TC-001-08: HTTP 500 from API shows error banner', async ({ page, app }) => {
-    await page.route(`${API_BASE}/api/search*`, route =>
-      route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ message: 'Service unavailable' }) })
-    );
-    await app.navigateTo('flight');
-    const flightSearch = new FlightSearchPage(page);
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
+  // NEG-02 — the backend's real error for a flight that doesn't exist
+  test('TC-001-08: an unknown flight number shows the backend error in a banner', async ({ flightSearch }) => {
+    const response = captureApi(flightSearch.page, '/api/search');
+    await flightSearch.searchByNumber(TEST_DATA.unknownFlightNumber);
+    const { status } = await response;
+    expect(status).toBe(404);
     await flightSearch.waitForSearchComplete();
 
     await expect(flightSearch.errorBanner).toBeVisible();
+    await expect(flightSearch.errorBanner).toContainText(TEST_DATA.unknownFlightNumber);
   });
 
   // UI-02 / UI-03 — mode toggle
@@ -99,27 +104,21 @@ test.describe('US-001 — Search by flight number', () => {
 
   // ST-01 — hash routing
   test('TC-001-11: hash routing #flight/NUMBER opens tab and auto-searches', async ({ page }) => {
-    await page.route(`${API_BASE}/api/search*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_SEARCH_RESULT) })
-    );
-    await page.route(`${API_BASE}/api/flight/history*`, route =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_FLIGHT_HISTORY) })
-    );
+    const response = captureApi(page, '/api/search');
     const app = new AppPage(page);
-    await app.gotoViaHash(`flight/${encodeURIComponent(TEST_DATA.validFlightNumber)}`);
+    await app.gotoViaHash(`flight/${encodeURIComponent(flightNumber)}`);
     await app.expectActiveTab('flight');
 
-    const flightSearch = new FlightSearchPage(page);
-    await flightSearch.waitForSearchComplete();
-    await expect(page.getByText(TEST_DATA.validFlightNumber, { exact: true }).first()).toBeVisible();
+    const { status, body } = await response;
+    expect(status).toBe(200);
+    await new FlightSearchPage(page).waitForSearchComplete();
+    await expect(page.getByText(body.legs[0].number, { exact: true }).first()).toBeVisible();
   });
 
   // ST-02 — airline name click
   test('TC-001-12: clicking airline name on FlightCard navigates to #airline/{iata}', async ({ flightSearch }) => {
-    await flightSearch.searchByNumber(TEST_DATA.validFlightNumber, TEST_DATA.validDate);
-    await flightSearch.waitForSearchComplete();
-
-    await flightSearch.page.getByRole('button', { name: TEST_DATA.validAirlineName }).click();
-    await expect(flightSearch.page).toHaveURL(/#airline\/6E/);
+    const leg = await search(flightSearch);
+    await flightSearch.page.getByRole('button', { name: leg.airline.name }).click();
+    await expect(flightSearch.page).toHaveURL(new RegExp(`#airline/${leg.airline.iata}$`));
   });
 });
