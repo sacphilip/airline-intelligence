@@ -1,11 +1,16 @@
 name: QA Tests
 
 on:
-  push:
-    branches: [develop]
-  pull_request:
-    branches: [develop]
   workflow_dispatch:
+    inputs:
+      backend_mode:
+        description: 'Backend to run API specs against (real = full NestJS backend; mock = lightweight mock server, skips DB and Redis)'
+        required: false
+        default: 'real'
+        type: choice
+        options:
+          - real
+          - mock
 
 # Cancel stale runs for the same ref (same PR or same branch push)
 concurrency:
@@ -118,14 +123,16 @@ jobs:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job B — API Automation
-# Spins up PostgreSQL and Redis as service containers, builds the NestJS
-# backend, waits for it to be ready, then runs the QA API Orchestrator
-# against each user story in sequence.
+# Runs committed Playwright API spec files directly — no test generation.
+# Stories touched by this PR run first (priority steps, individually visible
+# in the GitHub UI); remaining committed specs run in one batch after.
+# To add or update test specs: run /qa-orchestrator-ui <story-id> locally
+# and commit the generated file from apps/qa-api-orchestrator/tests/generated/.
 # ─────────────────────────────────────────────────────────────────────────────
   api-tests:
     name: API Automation
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -161,23 +168,30 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: |
+            backend/package-lock.json
+            apps/qa-api-orchestrator/package-lock.json
 
       - name: Install backend dependencies
+        if: inputs.backend_mode != 'mock'
         run: npm ci
         working-directory: backend
 
       - name: Install orchestrator dependencies
-        # npm install (not ci) in case package-lock.json is not yet committed
-        run: npm install
+        run: npm ci
+        working-directory: apps/qa-api-orchestrator
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
         working-directory: apps/qa-api-orchestrator
 
       - name: Build backend
+        if: inputs.backend_mode != 'mock'
         run: npm run build
         working-directory: backend
 
       - name: Start backend
-        # Run in the background; collector is disabled (no COLLECT_AIRPORTS)
+        if: inputs.backend_mode != 'mock'
         run: node dist/main &
         working-directory: backend
         env:
@@ -190,70 +204,113 @@ jobs:
           ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
 
       - name: Wait for backend to be ready
+        if: inputs.backend_mode != 'mock'
         run: |
-          echo "Waiting for backend at http://localhost:3100/api-docs-json ..."
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:3100/api-docs-json > /dev/null 2>&1; then
-              echo "Backend is ready after ${i} attempts"
-              exit 0
+            if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
+              echo "Backend ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/30 — retrying in 2 s"
-            sleep 2
+            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
           done
-          echo "ERROR: backend did not become ready within 60 s"
+          echo "ERROR: backend did not become ready within 60 s"; exit 1
+
+      - name: Start mock API server
+        if: inputs.backend_mode == 'mock'
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          npm run mock &
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
+              echo "Mock server ready after ${i} attempts"; exit 0
+            fi
+            echo "  attempt $i/15 — retrying in 1 s"; sleep 1
+          done
+          echo "ERROR: mock server did not become ready within 15 s"; exit 1
+
+      # ── Detect which user stories this PR touches ───────────────────────────
+      - name: Detect changed user stories
+        id: changed
+        run: |
+          BASE="${{ github.base_ref || 'develop' }}"
+          # For PRs compare head to base; for direct pushes compare to the previous commit
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            DIFF=$(git diff --name-only origin/${BASE}...HEAD)
+          else
+            DIFF=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          fi
+          # Extract US-NNN identifiers from any changed path (source, story, test files)
+          STORIES=$(echo "$DIFF" | grep -oE 'US-[0-9]+' | tr '[:upper:]' '[:lower:]' | sort -u | tr '\n' ' ' | xargs)
+          echo "stories=${STORIES}" >> $GITHUB_OUTPUT
+          echo "Changed stories: ${STORIES:-none}"
+          # List which of those have a committed spec
+          SPEC_DIR="apps/qa-api-orchestrator/tests/generated"
+          PRIORITY_SPECS=""
+          for s in $STORIES; do
+            spec="${SPEC_DIR}/${s}.spec.ts"
+            if [ -f "$spec" ]; then
+              PRIORITY_SPECS="${PRIORITY_SPECS} ${spec}"
+            else
+              echo "::notice::No committed spec for ${s^^} — run /qa-orchestrator-ui ${s^^} locally to generate one"
+            fi
+          done
+          echo "priority_specs=${PRIORITY_SPECS}" >> $GITHUB_OUTPUT
+
+      # ── Priority: run changed-story specs first (early feedback) ──────────────
+      - name: API — priority specs (stories changed in this PR)
+        if: steps.changed.outputs.priority_specs != ''
+        continue-on-error: true
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          mkdir -p reports
+          echo "Running priority specs: ${{ steps.changed.outputs.priority_specs }}"
+          npx playwright test ${{ steps.changed.outputs.priority_specs }} \
+            --config playwright.config.ts \
+            --output=reports/priority
+        env:
+          API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
+
+      # ── Full suite: run all committed specs ─────────────────────────────────
+      - name: API — full suite (initial)
+        id: run_full
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          SPEC_DIR="tests/generated"
+          mkdir -p reports
+          if ! ls ${SPEC_DIR}/*.spec.ts 1>/dev/null 2>&1; then
+            echo "::warning::No committed API spec files found in ${SPEC_DIR}/."
+            echo "Run /qa-orchestrator-ui <story-id> locally and commit the generated spec to include it in CI."
+            echo "status=skip" >> $GITHUB_OUTPUT
+          elif npx playwright test ${SPEC_DIR}/ --config playwright.config.ts --output=reports/full; then
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+        env:
+          API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
+
+      # ── Healing stage ────────────────────────────────────────────────────────
+      - name: Analyse and heal failures
+        id: heal
+        if: steps.run_full.outputs.status == 'fail'
+        continue-on-error: true
+        working-directory: apps/qa-api-orchestrator
+        run: npm run ci-heal
+
+      - name: Re-run after healing
+        if: steps.run_full.outputs.status == 'fail' && steps.heal.outcome == 'success'
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          echo "Re-running full suite after auto-healing..."
+          npx playwright test tests/generated/ --config playwright.config.ts --output=reports/full-healed
+        env:
+          API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
+
+      - name: Fail if not auto-healable
+        if: steps.run_full.outputs.status == 'fail' && steps.heal.outcome != 'success'
+        run: |
+          echo "::error::API specs failed and could not be auto-healed."
+          echo "::error::See apps/qa-api-orchestrator/reports/heal-summary.json for failure classification."
           exit 1
-
-      # Each user story is a separate step so failures are individually visible
-      # in the GitHub Actions UI. The job fails on the first failing story.
-
-      - name: API — US-001 Search by flight number
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-001-search-by-flight-number.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-002 Search by route
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-002-search-by-route.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-003 Flight card
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-003-flight-card.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-005 Flight history
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-005-flight-history.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-006 Airline profile
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-006-airline-profile.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-007 Airline rankings
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-007-airline-compare.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
-
-      - name: API — US-008 Reliability trend
-        working-directory: apps/qa-api-orchestrator
-        run: npm run qa ../../user-stories/US-008-reliability-trend.md
-        env:
-          API_BASE_URL: http://localhost:3100
-          OPENAPI_URL: http://localhost:3100/api-docs-json
 
       - name: Upload API test reports
         uses: actions/upload-artifact@v4
@@ -262,3 +319,90 @@ jobs:
           name: api-test-reports
           path: apps/qa-api-orchestrator/reports/
           retention-days: 14
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job C — Notify
+# Sends an email to sacphilip@gmail.com after the full regression run.
+# Fires whether the suite passed or failed (if: always()).
+#
+# Required secrets (Settings → Secrets → Actions):
+#   NOTIFY_GMAIL_USER        — Gmail address used to send (e.g. cibot@gmail.com)
+#   NOTIFY_GMAIL_APP_PASSWORD — Gmail App Password (not the account password)
+#                               Create one at myaccount.google.com/apppasswords
+# ─────────────────────────────────────────────────────────────────────────────
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [ui-tests, api-tests]
+    if: always()
+
+    steps:
+      - name: Determine overall status
+        id: status
+        run: |
+          UI="${{ needs.ui-tests.result }}"
+          API="${{ needs.api-tests.result }}"
+          if [ "$UI" = "success" ] && [ "$API" = "success" ]; then
+            echo "icon=✅"    >> $GITHUB_OUTPUT
+            echo "label=PASSED" >> $GITHUB_OUTPUT
+          else
+            echo "icon=❌"    >> $GITHUB_OUTPUT
+            echo "label=FAILED" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send regression results email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.NOTIFY_GMAIL_USER }}
+          password: ${{ secrets.NOTIFY_GMAIL_APP_PASSWORD }}
+          to: sacphilip@gmail.com
+          from: Flight Tracker CI <${{ secrets.NOTIFY_GMAIL_USER }}>
+          subject: >-
+            ${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}
+            — ${{ github.repository }} @ ${{ github.ref_name }}
+          html_body: |
+            <h2>${{ steps.status.outputs.icon }} Regression suite ${{ steps.status.outputs.label }}</h2>
+            <table cellpadding="6" style="border-collapse:collapse;font-family:monospace">
+              <tr>
+                <td><b>Repo</b></td>
+                <td>${{ github.repository }}</td>
+              </tr>
+              <tr>
+                <td><b>Branch</b></td>
+                <td>${{ github.ref_name }}</td>
+              </tr>
+              <tr>
+                <td><b>Commit</b></td>
+                <td><a href="${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}">${{ github.sha }}</a></td>
+              </tr>
+              <tr>
+                <td><b>Author</b></td>
+                <td>${{ github.actor }}</td>
+              </tr>
+              <tr>
+                <td><b>Message</b></td>
+                <td>${{ github.event.head_commit.message || '(manual dispatch)' }}</td>
+              </tr>
+            </table>
+            <br>
+            <h3>Job results</h3>
+            <table cellpadding="6" style="border-collapse:collapse">
+              <tr style="background:#f0f0f0">
+                <th align="left">Job</th><th align="left">Result</th>
+              </tr>
+              <tr>
+                <td>UI Automation</td>
+                <td>${{ needs.ui-tests.result == 'success' && '✅ passed' || '❌ ' }}${{ needs.ui-tests.result }}</td>
+              </tr>
+              <tr>
+                <td>API Automation</td>
+                <td>${{ needs.api-tests.result == 'success' && '✅ passed' || '❌ ' }}${{ needs.api-tests.result }}</td>
+              </tr>
+            </table>
+            <br>
+            <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">
+              View full run in GitHub Actions →
+            </a>

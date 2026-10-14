@@ -1,0 +1,161 @@
+name: Smoke Tests
+
+# Pre-merge gate — runs on every PR targeting develop.
+# BOTH jobs must pass for the merge to be allowed.
+# Set as required status checks in branch protection:
+#   "Smoke Tests / UI Smoke"
+#   "Smoke Tests / API Smoke"
+on:
+  pull_request:
+    branches: [develop]
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 — UI Smoke
+# Starts only the Next.js frontend (no backend, no database).
+# All API calls are intercepted by page.route() mocks inside the spec.
+# Runs after every merge to develop. Should complete in < 3 minutes.
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+  smoke-ui:
+    name: UI Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run UI smoke tests
+        run: npx playwright test --config playwright.smoke.config.ts
+        env:
+          CI: 'true'
+
+      - name: Upload smoke report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-ui-report
+          path: smoke-report/
+          retention-days: 7
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 — API Smoke
+# Starts the NestJS backend against a fresh, empty Postgres.
+# Tests cover health, 400 validation errors, and empty-state 200s.
+# No AERODATABOX_KEY needed — no live data fetched.
+# Should complete in < 5 minutes.
+# ─────────────────────────────────────────────────────────────────────────────
+  smoke-api:
+    name: API Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flight_tracker
+          POSTGRES_PASSWORD: flight_tracker
+          POSTGRES_DB: flight_tracker
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            apps/qa-api-orchestrator/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install orchestrator dependencies
+        run: npm ci
+        working-directory: apps/qa-api-orchestrator
+
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      - name: Start backend
+        run: node dist/main &
+        working-directory: backend
+        env:
+          PORT: 3100
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          # Disable background collectors — no API key needed, no quota used
+          COLLECT_AIRPORTS: ''
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
+              echo "Backend ready after ${i} attempts"; exit 0
+            fi
+            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
+          done
+          echo "ERROR: backend did not become ready within 60 s"; exit 1
+
+      - name: Run API smoke tests
+        run: npx playwright test --config playwright.smoke.config.ts
+        working-directory: apps/qa-api-orchestrator
+        env:
+          API_BASE_URL: http://localhost:3100
+
+      - name: Upload API smoke results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-api-report
+          path: apps/qa-api-orchestrator/reports/smoke-results.json
+          retention-days: 7

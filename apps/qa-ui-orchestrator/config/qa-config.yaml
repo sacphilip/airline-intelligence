@@ -1,0 +1,88 @@
+# QA Automation Configuration — flight-tracker
+# Referenced by all agents to avoid hardcoding project details.
+
+project:
+  name: flight-tracker
+  language: TypeScript
+  packageManager: npm
+
+application:
+  frontend:
+    url: http://localhost:3000
+    cwd: ./frontend
+    startCommand: npm run dev
+  backend:
+    url: http://localhost:3100
+    cwd: ./backend
+    startCommand: npm run start:dev
+
+framework:
+  runner: "@playwright/test"
+  configFile: playwright.config.ts
+  testDir: tests/
+  specsDir: tests/specs/
+  pagesDir: tests/pages/
+  fixturesDir: tests/fixtures/
+  dataDir: tests/data/
+
+conventions:
+  pageObjectSuffix: Page         # e.g. AppPage, FlightSearchPage
+  fixtureFile: tests/fixtures/test.fixture.ts
+  mockDataFile: tests/data/mock-responses.ts
+  specNaming: "us-{number}-{slug}.spec.ts"
+  pageNaming: "{Feature}Page.ts"
+  testIdFormat: "TC-{US}-{nn}"   # e.g. TC-001-01
+
+locatorPriority:
+  - getByRole
+  - getByLabel
+  - getByPlaceholder
+  - getByText
+  - testId
+  - stableCss
+  - xpath
+
+apiInterception:
+  # All API calls originate from the browser to this base URL.
+  # Intercept via page.route() in beforeEach or individual tests.
+  base: http://localhost:3100
+  endpoints:
+    search:        /api/search
+    route:         /api/route
+    flightHistory: /api/flight/history
+    airlineProfile: /api/airline/profile
+    aircraft:      /api/aircraft
+    delays:        /api/delays
+    airlines:      /api/airlines
+
+tabs:
+  - id: map
+    label: Live Map
+    hash: ""
+  - id: flight
+    label: Find Flight
+    hash: flight
+  - id: delays
+    label: Delays
+    hash: delays
+  - id: airline
+    label: Airlines
+    hash: airline
+
+stateSchema: workflows/execution-context.json
+
+userStoriesDir: ../../user-stories/
+
+reporting:
+  outputDir: ../../playwright-report/
+  htmlReport: true
+  traceDir: ../../test-results/
+
+healingPolicy:
+  maxAttempts: 2
+  allowedTypes:
+    - LOCATOR_FAILURE
+    - TIMING_SYNCHRONIZATION
+  forbiddenTypes:
+    - PRODUCT_DEFECT
+    - INCORRECT_BUSINESS_BEHAVIOR

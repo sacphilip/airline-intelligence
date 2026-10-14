@@ -3,6 +3,7 @@ import { ApiContract } from './api-contract';
 import { TestDesign } from './test-case';
 import { ExecutionResult, AnalysisResult } from './failure';
 import { PreTestCoverageAnalysis, PostExecutionCoverageReport } from './coverage';
+import { ReviewRecord } from './review';
 
 export interface OrchestratorState {
   storyPath: string;
@@ -12,6 +13,9 @@ export interface OrchestratorState {
   apiContract?: ApiContract;
   testDesign?: TestDesign;
   preCoverage?: PreTestCoverageAnalysis;
+  review?: ReviewRecord;
+  /** Set when the run stopped at the review gate: waiting for a decision, or rejected. */
+  stoppedAtReview?: 'awaiting' | 'rejected';
   generatedTestPath?: string;
   firstRun?: ExecutionResult;
   analysis?: AnalysisResult;

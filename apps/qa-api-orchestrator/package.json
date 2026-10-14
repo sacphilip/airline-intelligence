@@ -17,6 +17,8 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "qa": "tsx src/cli.ts",
+    "ci-heal": "tsx src/ci-healer.ts",
+    "mock": "tsx src/mock-server.ts",
     "test": "playwright test",
     "report": "playwright show-report reports/playwright"
   },
