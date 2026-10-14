@@ -15,7 +15,9 @@
     "test:us005": "playwright test tests/specs/us-005-flight-history.spec.ts",
     "test:us006": "playwright test tests/specs/us-006-airline-profile.spec.ts",
     "test:us009": "playwright test tests/specs/us-009-route-analytics.spec.ts",
-    "qa": "cd apps/qa-api-orchestrator && npm run qa --"
+    "qa": "cd apps/qa-api-orchestrator && npm run qa --",
+    "orchestrator:build": "npm ci --prefix packages/qa-orchestrator-mcp",
+    "orchestrator:init": "node packages/qa-orchestrator-mcp/dist/index.js init"
   },
   "keywords": [],
   "type": "commonjs",

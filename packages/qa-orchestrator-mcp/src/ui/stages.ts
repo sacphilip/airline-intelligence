@@ -230,7 +230,7 @@ const PATTERNS: { regex: RegExp; classification: FailureClassification; action: 
   { regex: /Executable doesn't exist|playwright install/i, classification: 'ENVIRONMENT_FAILURE', action: 'INVESTIGATE', cause: 'Playwright browser not installed — run the qa_install_browsers tool' },
   { regex: /timeout.*exceeded|waiting for.*locator|locator.*timed out/i, classification: 'TIMING_SYNCHRONIZATION', action: 'HEAL', cause: 'Element not ready within the timeout' },
   { regex: /strict mode violation|resolved to (\d+) element/i, classification: 'LOCATOR_FAILURE', action: 'HEAL', cause: 'Locator matched several elements (strict mode)' },
-  { regex: /element not found|no element matching|locator\.(\w+): element is not/i, classification: 'LOCATOR_FAILURE', action: 'HEAL', cause: 'Element not found in the DOM' },
+  { regex: /element\(s\) not found|element not found|no element matching|locator\.(\w+): element is not/i, classification: 'LOCATOR_FAILURE', action: 'HEAL', cause: 'Element not found in the DOM' },
   { regex: /Expected.*toHaveText.*Received|Expected.*toContainText.*Received/i, classification: 'TEST_DATA_FAILURE', action: 'HEAL', cause: 'Rendered text differs from what the test expects' },
   { regex: /Expected.*toHaveURL.*Received|Expected.*toHaveAttribute.*Received/i, classification: 'TEST_DEFECT', action: 'HEAL', cause: 'URL or attribute assertion mismatch' },
   { regex: /status code (\d{3})|expected.*status.*(\d{3}).*received.*(\d{3})/i, classification: 'PRODUCT_DEFECT', action: 'REPORT_DEFECT', cause: 'Unexpected HTTP status' },
