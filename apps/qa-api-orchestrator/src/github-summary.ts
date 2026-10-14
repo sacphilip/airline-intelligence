@@ -34,6 +34,23 @@ function buildMarkdown(state: OrchestratorState): string {
   const passIcon  = (run?.failed ?? 0) === 0 ? '🟢' : '🔴';
   const lines: string[] = [];
 
+  // ── Stopped at the review gate: no tests were generated ──────────────────
+  if (state.stoppedAtReview) {
+    const icon = state.stoppedAtReview === 'awaiting' ? '⏸️' : '⛔';
+    lines.push(`## ${icon} ${state.storyId} — ${title}`);
+    lines.push('');
+    lines.push(state.stoppedAtReview === 'awaiting'
+      ? '**Awaiting human review of the test plan.** No tests were generated or run.'
+      : `**Test plan rejected by ${state.review?.reviewer}:** ${state.review?.comment}. No tests were generated or run.`);
+    lines.push('');
+    if (state.preCoverage) {
+      lines.push(`Planned: ${state.testDesign?.testCases.length ?? 0} test cases, ${state.preCoverage.coveragePercent}% requirement coverage, ${state.preCoverage.gaps.length} gap(s).`);
+      lines.push('');
+    }
+    lines.push('---', '');
+    return lines.join('\n');
+  }
+
   // ── Header ───────────────────────────────────────────────────────────────
   lines.push(`## ${passIcon} ${state.storyId} — ${title}`);
   lines.push('');
@@ -50,6 +67,11 @@ function buildMarkdown(state: OrchestratorState): string {
   }
   if (run?.duration) {
     lines.push(`| ⏱ Duration | ${(run.duration / 1000).toFixed(1)} s |`);
+  }
+  if (state.review) {
+    const r = state.review;
+    const who = r.mode === 'auto' ? 'skipped (auto)' : `approved by ${r.reviewer}`;
+    lines.push(`| 👤 Plan review | ${who}${r.excludedTestCaseIds.length ? ` — excluded ${r.excludedTestCaseIds.join(', ')}` : ''}${r.comment && r.mode !== 'auto' ? ` — “${r.comment}”` : ''} |`);
   }
   lines.push('');
 

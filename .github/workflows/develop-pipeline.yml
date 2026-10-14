@@ -1,0 +1,281 @@
+name: Develop Pipeline
+
+# Post-merge regression — runs after every push to develop.
+# Smoke already passed on the PR; this runs the full suite and notifies.
+#
+# Jobs (parallel):
+#   ui-regression  — real backend + live data, full Playwright UI suite
+#   api-regression — real backend, all committed us-NNN.spec.ts files
+# Then:
+#   notify — email sacphilip@gmail.com with per-job results + run link
+#
+# Required secrets:
+#   AERODATABOX_KEY            — live flight data
+#   NOTIFY_GMAIL_USER          — Gmail address CI sends from
+#   NOTIFY_GMAIL_APP_PASSWORD  — Gmail App Password (myaccount.google.com/apppasswords)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: develop-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UI Regression
+# ─────────────────────────────────────────────────────────────────────────────
+  ui-regression:
+    name: Regression / UI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flight_tracker
+          POSTGRES_PASSWORD: flight_tracker
+          POSTGRES_DB: flight_tracker
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ['5432:5432']
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ['6379:6379']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      - name: Check AeroDataBox key
+        run: |
+          [ -n "$AERODATABOX_KEY" ] || { echo "::error::AERODATABOX_KEY secret is not set"; exit 1; }
+        env:
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+
+      - name: Install dependencies
+        run: npm ci && npm ci --prefix frontend && npm ci --prefix backend
+
+      - name: Install Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+
+      - name: Run full UI test suite
+        run: npm test
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          FRONTEND_URL: http://localhost:3000
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-regression-report
+          path: playwright-report/
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-regression-results
+          path: test-results/
+          retention-days: 7
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API Regression
+# ─────────────────────────────────────────────────────────────────────────────
+  api-regression:
+    name: Regression / API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: flight_tracker
+          POSTGRES_PASSWORD: flight_tracker
+          POSTGRES_DB: flight_tracker
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ['5432:5432']
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ['6379:6379']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            apps/qa-api-orchestrator/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Install orchestrator dependencies
+        run: npm ci
+        working-directory: apps/qa-api-orchestrator
+
+      - name: Install Playwright (Chromium)
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/qa-api-orchestrator
+
+      - name: Build and start backend
+        run: npm run build && node dist/main &
+        working-directory: backend
+        env:
+          PORT: 3100
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+
+      - name: Wait for backend
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3100/health > /dev/null 2>&1 && echo "ready" && exit 0
+            sleep 2
+          done; exit 1
+
+      - name: Run all committed API specs (initial)
+        id: run_specs
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          SPEC_DIR="tests/generated"
+          mkdir -p reports
+          if ! ls ${SPEC_DIR}/*.spec.ts 1>/dev/null 2>&1; then
+            echo "::warning::No committed API specs in ${SPEC_DIR}/."
+            echo "status=skip" >> $GITHUB_OUTPUT
+          elif npx playwright test ${SPEC_DIR}/ --config playwright.config.ts --output=reports/full; then
+            echo "status=pass" >> $GITHUB_OUTPUT
+          else
+            echo "status=fail" >> $GITHUB_OUTPUT
+          fi
+        env:
+          API_BASE_URL: http://localhost:3100
+
+      - name: Analyse and heal failures
+        id: heal
+        if: steps.run_specs.outputs.status == 'fail'
+        continue-on-error: true
+        working-directory: apps/qa-api-orchestrator
+        run: npm run ci-heal
+
+      - name: Re-run after healing
+        if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome == 'success'
+        working-directory: apps/qa-api-orchestrator
+        run: |
+          echo "Re-running after auto-healing..."
+          npx playwright test tests/generated/ --config playwright.config.ts --output=reports/full-healed
+        env:
+          API_BASE_URL: http://localhost:3100
+
+      - name: Fail if not auto-healable
+        if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome != 'success'
+        run: |
+          echo "::error::API regression specs failed and could not be auto-healed."
+          echo "::error::See apps/qa-api-orchestrator/reports/heal-summary.json for details."
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-regression-reports
+          path: apps/qa-api-orchestrator/reports/
+          retention-days: 14
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Notify  (always runs, even if regression failed)
+# ─────────────────────────────────────────────────────────────────────────────
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [ui-regression, api-regression]
+    if: always()
+
+    steps:
+      - name: Compute overall status
+        id: status
+        run: |
+          R1="${{ needs.ui-regression.result }}"
+          R2="${{ needs.api-regression.result }}"
+          if [ "$R1" = "success" ] && [ "$R2" = "success" ]; then
+            echo "icon=✅"     >> $GITHUB_OUTPUT
+            echo "label=PASSED" >> $GITHUB_OUTPUT
+          else
+            echo "icon=❌"     >> $GITHUB_OUTPUT
+            echo "label=FAILED" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.NOTIFY_GMAIL_USER }}
+          password: ${{ secrets.NOTIFY_GMAIL_APP_PASSWORD }}
+          to: sacphilip@gmail.com
+          from: Flight Tracker CI <${{ secrets.NOTIFY_GMAIL_USER }}>
+          subject: >-
+            ${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}
+            — ${{ github.repository }} @ ${{ github.ref_name }}
+          html_body: |
+            <h2>${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}</h2>
+            <table cellpadding="6" style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+              <tr><td><b>Branch</b></td><td>${{ github.ref_name }}</td></tr>
+              <tr><td><b>Commit</b></td>
+                  <td><a href="${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}">${{ github.sha }}</a></td></tr>
+              <tr><td><b>Author</b></td><td>${{ github.actor }}</td></tr>
+              <tr><td><b>Message</b></td><td>${{ github.event.head_commit.message }}</td></tr>
+            </table>
+            <br>
+            <table cellpadding="6" style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+              <tr style="background:#f5f5f5"><th align="left">Job</th><th align="left">Result</th></tr>
+              <tr>
+                <td>UI Regression</td>
+                <td>${{ needs.ui-regression.result == 'success' && '✅ passed' || '❌ failed' }}</td>
+              </tr>
+              <tr>
+                <td>API Regression</td>
+                <td>${{ needs.api-regression.result == 'success' && '✅ passed' || '❌ failed' }}</td>
+              </tr>
+            </table>
+            <br>
+            <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+               style="background:#0969da;color:#fff;padding:8px 16px;text-decoration:none;border-radius:4px;font-family:sans-serif">
+              View full run →
+            </a>

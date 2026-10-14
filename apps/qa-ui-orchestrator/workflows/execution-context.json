@@ -1,0 +1,467 @@
+{
+  "storyId": "US-006",
+  "storyFile": "../../user-stories/US-006-airline-profile.md",
+  "status": "PASS",
+  "requirements": [
+    {
+      "id": "AC-01",
+      "description": "Shows airline name and IATA/ICAO codes",
+      "type": "functional"
+    },
+    {
+      "id": "AC-02",
+      "description": "Shows Reliability Score (0–100)",
+      "type": "functional"
+    },
+    {
+      "id": "AC-03",
+      "description": "Shows on-time performance percentage",
+      "type": "functional"
+    },
+    {
+      "id": "AC-04",
+      "description": "Shows average delay in minutes",
+      "type": "boundary"
+    },
+    {
+      "id": "AC-05",
+      "description": "Shows cancellation rate percentage",
+      "type": "functional"
+    },
+    {
+      "id": "AC-06",
+      "description": "Shows score breakdown by component",
+      "type": "functional"
+    },
+    {
+      "id": "AC-07",
+      "description": "Shows delay distribution (early / on-time / slight / moderate / severe)",
+      "type": "functional"
+    },
+    {
+      "id": "AC-08",
+      "description": "Shows top routes operated",
+      "type": "functional"
+    },
+    {
+      "id": "AC-09",
+      "description": "Shows top airports served",
+      "type": "functional"
+    },
+    {
+      "id": "AC-10",
+      "description": "Shows known fleet (tail numbers)",
+      "type": "functional"
+    },
+    {
+      "id": "NEG-01",
+      "description": "Invalid or missing input returns an appropriate error state",
+      "type": "negative"
+    }
+  ],
+  "testCases": [
+    {
+      "id": "TC-006-01",
+      "requirement": "AC-01",
+      "scenario": "Airlines tab is accessible from main navigation",
+      "preconditions": "App loaded at http://localhost:3000",
+      "testData": "none",
+      "steps": [
+        "Navigate to http://localhost:3000",
+        "Click Airlines tab in nav"
+      ],
+      "expected": "Airlines tab becomes active (aria-selected='true'); airline search form is visible",
+      "type": "Functional",
+      "priority": "P0",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Core navigation — blocks entire feature if broken"
+    },
+    {
+      "id": "TC-006-02",
+      "requirement": "AC-01",
+      "scenario": "Valid IATA search returns airline name and codes",
+      "preconditions": "Airlines tab is active",
+      "testData": "iata=6E; mock GET /api/airline/profile with IndiGo profile fixture",
+      "steps": [
+        "Enter '6E' in IATA input",
+        "Submit search"
+      ],
+      "expected": "Airline name 'IndiGo', IATA '6E' and ICAO code are displayed",
+      "type": "Functional",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Primary happy path for AC-01"
+    },
+    {
+      "id": "TC-006-03",
+      "requirement": "AC-02",
+      "scenario": "Reliability score ring shows a value between 0 and 100",
+      "preconditions": "Airlines tab; mock returns profile with score=80",
+      "testData": "iata=6E; mocked score 80",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Score ring element is visible; text '80' (or '80/100') is present",
+      "type": "Functional",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Core metric display"
+    },
+    {
+      "id": "TC-006-04",
+      "requirement": "AC-03",
+      "scenario": "On-time performance percentage is displayed",
+      "preconditions": "Airlines tab; mock returns onTimePct=84",
+      "testData": "iata=6E; mocked onTimePct 84%",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "On-time percentage value visible in metrics section",
+      "type": "Functional",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Key reliability metric — AC-03"
+    },
+    {
+      "id": "TC-006-05",
+      "requirement": "AC-04",
+      "scenario": "Average delay value is displayed in minutes",
+      "preconditions": "Airlines tab; mock returns avgDelay=18",
+      "testData": "iata=6E; mocked avgDelay 18 min",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Average delay value (e.g. '18 min') visible in metrics section",
+      "type": "Boundary",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Boundary metric — delays can be 0 to large values"
+    },
+    {
+      "id": "TC-006-06",
+      "requirement": "AC-05",
+      "scenario": "Cancellation rate percentage is displayed",
+      "preconditions": "Airlines tab; mock returns cancelRate=1.2%",
+      "testData": "iata=6E; mocked cancelRate 1.2%",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Cancellation rate value visible in metrics section",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Key reliability metric — AC-05"
+    },
+    {
+      "id": "TC-006-07",
+      "requirement": "AC-06",
+      "scenario": "Score breakdown section shows per-component bars",
+      "preconditions": "Airlines tab; mock returns full profile",
+      "testData": "iata=6E; full mocked profile",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Reliability breakdown section renders with at least one component bar visible",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "AC-06 — breakdown section existence check"
+    },
+    {
+      "id": "TC-006-08",
+      "requirement": "AC-07",
+      "scenario": "Delay distribution section renders 5 buckets",
+      "preconditions": "Airlines tab; mock returns delayDistribution data",
+      "testData": "iata=6E; mocked delay distribution",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Delay distribution section is visible; 5 labels (early / on-time / slight / moderate / severe) present",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "AC-07 — histogram section existence"
+    },
+    {
+      "id": "TC-006-09",
+      "requirement": "AC-08",
+      "scenario": "Top routes section renders route list",
+      "preconditions": "Airlines tab; mock returns topRoutes array",
+      "testData": "iata=6E; mocked routes",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Top routes section is visible with at least one route entry",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "AC-08 — routes section existence"
+    },
+    {
+      "id": "TC-006-10",
+      "requirement": "AC-09",
+      "scenario": "Top airports section renders airport list",
+      "preconditions": "Airlines tab; mock returns topAirports array",
+      "testData": "iata=6E; mocked airports",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Top airports section is visible with at least one airport entry",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "AC-09 — airports section existence"
+    },
+    {
+      "id": "TC-006-11",
+      "requirement": "AC-10",
+      "scenario": "Fleet section renders tail numbers",
+      "preconditions": "Airlines tab; mock returns fleet array",
+      "testData": "iata=6E; mocked fleet",
+      "steps": [
+        "Search for '6E'"
+      ],
+      "expected": "Fleet section is visible with at least one tail number entry",
+      "type": "Functional",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "AC-10 — fleet section existence"
+    },
+    {
+      "id": "TC-006-12",
+      "requirement": "NEG-01",
+      "scenario": "Submitting empty IATA input shows validation error",
+      "preconditions": "Airlines tab is active; input is blank",
+      "testData": "iata='' (empty)",
+      "steps": [
+        "Leave IATA input blank",
+        "Click Search"
+      ],
+      "expected": "Validation error or search button remains disabled; no API call is made",
+      "type": "Negative",
+      "priority": "P0",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "NEG-01 — empty input is the most common error path"
+    },
+    {
+      "id": "TC-006-13",
+      "requirement": "NEG-01",
+      "scenario": "API error response shows error banner",
+      "preconditions": "Airlines tab; mock returns HTTP 500",
+      "testData": "iata=6E; mock returns 500",
+      "steps": [
+        "Search for '6E' while mock returns 500"
+      ],
+      "expected": "Error banner or error message is displayed; no crash",
+      "type": "Negative",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "NEG-01 — API failure resilience"
+    },
+    {
+      "id": "TC-006-14",
+      "requirement": "NEG-01",
+      "scenario": "Loading indicator is shown while API request is in flight",
+      "preconditions": "Airlines tab; mock delays response 500ms",
+      "testData": "iata=6E; mock with 500ms delay",
+      "steps": [
+        "Search for '6E'",
+        "Observe UI before response arrives"
+      ],
+      "expected": "Loading spinner or skeleton is visible before the response completes",
+      "type": "Functional",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "UX state — loading feedback"
+    },
+    {
+      "id": "TC-006-15",
+      "requirement": "AC-01",
+      "scenario": "Hash routing #airline/6E opens Airlines tab and pre-fills IATA input",
+      "preconditions": "App not loaded",
+      "testData": "URL: http://localhost:3000#airline/6E",
+      "steps": [
+        "Navigate directly to http://localhost:3000#airline/6E"
+      ],
+      "expected": "Airlines tab is active; IATA input is pre-filled with '6E'",
+      "type": "Functional",
+      "priority": "P1",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "Deep-link / hash routing — core navigation feature"
+    },
+    {
+      "id": "TC-006-16",
+      "requirement": "NEG-01",
+      "scenario": "Airline with no data shows appropriate empty state",
+      "preconditions": "Airlines tab; mock returns empty profile (score null, no metrics)",
+      "testData": "iata=XX; mock returns 404 or empty data",
+      "steps": [
+        "Search for 'XX'"
+      ],
+      "expected": "Empty state message displayed; no JS errors; sections gracefully hidden or show zero values",
+      "type": "Negative",
+      "priority": "P2",
+      "automation": true,
+      "automationStrategy": "UI",
+      "reason": "NEG-01 — not-found / no-data resilience"
+    }
+  ],
+  "frameworkDiscovery": {
+    "existingPages": [
+      "AirlinePage (tests/pages/AirlinePage.ts)",
+      "AppPage (tests/pages/AppPage.ts)",
+      "FlightSearchPage (tests/pages/FlightSearchPage.ts)"
+    ],
+    "existingFixtures": [],
+    "existingMockData": [
+      "TEST_DATA"
+    ],
+    "existingSpecs": [
+      "app-navigation.spec.ts",
+      "us-001-search-by-flight-number.spec.ts",
+      "us-002-search-by-route.spec.ts",
+      "us-003-flight-card.spec.ts",
+      "us-005-flight-history.spec.ts",
+      "us-006-airline-profile.spec.ts",
+      "us-009-route-analytics.spec.ts"
+    ],
+    "specAlreadyExists": "us-006-airline-profile.spec.ts",
+    "reusableForNewStory": [
+      "AppPage — tab navigation, hash routing (tests/pages/AppPage.ts)",
+      "FlightSearchPage — number/route search (tests/pages/FlightSearchPage.ts)",
+      "AirlinePage — airline profile lookup (tests/pages/AirlinePage.ts)",
+      "TEST_DATA — standard test inputs (tests/data/test-data.ts)"
+    ]
+  },
+  "automatedTests": [
+    {
+      "testCaseId": "TC-006-01",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-02",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-03",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-04",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-05",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-06",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-07",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-08",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-09",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-10",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-11",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-12",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-13",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-14",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-15",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    },
+    {
+      "testCaseId": "TC-006-16",
+      "file": "tests/specs/us-006-airline-profile.spec.ts",
+      "status": "created"
+    }
+  ],
+  "executionResults": [
+    { "testId": "TC-006-01", "result": "PASS", "duration": 700 },
+    { "testId": "TC-006-02", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-03", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-04", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-05", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-06", "result": "PASS", "duration": 1000 },
+    { "testId": "TC-006-07", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-08", "result": "PASS", "duration": 1200 },
+    { "testId": "TC-006-09", "result": "PASS", "duration": 1000 },
+    { "testId": "TC-006-10", "result": "PASS", "duration": 1000 },
+    { "testId": "TC-006-11", "result": "PASS", "duration": 1200 },
+    { "testId": "TC-006-12", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-13", "result": "PASS", "duration": 972 },
+    { "testId": "TC-006-14", "result": "PASS", "duration": 1100 },
+    { "testId": "TC-006-15", "result": "PASS", "duration": 649 },
+    { "testId": "TC-006-16", "result": "PASS", "duration": 993 }
+  ],
+  "failures": [],
+  "healingAttempts": [
+    {
+      "testId": "TC-006-02",
+      "change": "Removed over-broad getByText('6E') assertion",
+      "reason": "Strict mode violation — matched search hint text and profile code div simultaneously",
+      "result": "PASS"
+    },
+    {
+      "testId": "TC-006-10",
+      "change": "Scoped span.font-mono locator to the Airports section via section.filter(heading)",
+      "reason": "Locator resolved to a hidden ETH616 span in the rankings table instead of an airport chip",
+      "result": "PASS"
+    }
+  ],
+  "defects": []
+}

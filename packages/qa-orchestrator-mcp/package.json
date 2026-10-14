@@ -1,0 +1,36 @@
+{
+  "name": "qa-orchestrator-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for QA orchestration: plans, generates, runs and heals Playwright API and UI tests from user stories, with a human review gate and built-in browser tools.",
+  "license": "MIT",
+  "keywords": ["mcp", "model-context-protocol", "playwright", "qa", "test-automation", "claude"],
+  "bin": {
+    "qa-orchestrator-mcp": "dist/index.js"
+  },
+  "main": "dist/lib.js",
+  "types": "dist/lib.d.ts",
+  "files": [
+    "dist",
+    "prompts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "prebuild": "npm run clean",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@playwright/mcp": "^0.0.83",
+    "@playwright/test": "^1.64.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

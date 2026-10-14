@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QA Execution Context",
+  "description": "Shared state passed between agents in the QA workflow.",
+  "type": "object",
+  "required": ["storyId", "storyFile", "status"],
+  "properties": {
+    "storyId": {
+      "type": "string",
+      "description": "User story identifier, e.g. US-001",
+      "examples": ["US-001", "US-006"]
+    },
+    "storyFile": {
+      "type": "string",
+      "description": "Path to the user story markdown file",
+      "examples": ["../../user-stories/US-001-search-by-flight-number.md"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["PENDING", "REQUIREMENTS_DONE", "TEST_DESIGN_DONE", "FRAMEWORK_DISCOVERED",
+               "AUTOMATION_DONE", "EXECUTING", "PASS", "FAIL", "BLOCKED"],
+      "description": "Current phase of the workflow"
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description"],
+        "properties": {
+          "id":          { "type": "string", "examples": ["AC-01"] },
+          "description": { "type": "string" },
+          "type":        { "type": "string", "enum": ["functional", "negative", "boundary", "ui", "role"] }
+        }
+      }
+    },
+    "testCases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "requirement", "scenario", "priority", "automation"],
+        "properties": {
+          "id":          { "type": "string", "examples": ["TC-001-01"] },
+          "requirement": { "type": "string", "description": "Links to requirements[].id" },
+          "scenario":    { "type": "string" },
+          "type":        { "type": "string", "enum": ["Functional", "Negative", "Boundary", "UI", "Role", "Regression"] },
+          "priority":    { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+          "automation":  { "type": "boolean" },
+          "automationStrategy": { "type": "string", "enum": ["UI", "API", "UI+API", "MANUAL", "NOT_AUTOMATABLE"] },
+          "reason":      { "type": "string" }
+        }
+      }
+    },
+    "frameworkDiscovery": {
+      "type": "object",
+      "properties": {
+        "existingPages":    { "type": "array", "items": { "type": "string" } },
+        "existingFixtures": { "type": "array", "items": { "type": "string" } },
+        "existingData":     { "type": "array", "items": { "type": "string" } },
+        "reusableItems":    { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "automatedTests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["testCaseId", "file"],
+        "properties": {
+          "testCaseId": { "type": "string" },
+          "file":       { "type": "string" },
+          "status":     { "type": "string", "enum": ["created", "modified", "reused"] }
+        }
+      }
+    },
+    "executionResults": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["testId", "result"],
+        "properties": {
+          "testId":      { "type": "string" },
+          "result":      { "type": "string", "enum": ["PASS", "FAIL", "SKIP"] },
+          "duration":    { "type": "number" },
+          "error":       { "type": "string" },
+          "screenshot":  { "type": "string" },
+          "trace":       { "type": "string" }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["testId", "classification"],
+        "properties": {
+          "testId":         { "type": "string" },
+          "classification": {
+            "type": "string",
+            "enum": ["PRODUCT_DEFECT", "TEST_DEFECT", "LOCATOR_FAILURE",
+                     "TIMING_SYNCHRONIZATION", "TEST_DATA_FAILURE",
+                     "ENVIRONMENT_FAILURE", "NETWORK_API_FAILURE", "UNKNOWN"]
+          },
+          "rootCause":  { "type": "string" },
+          "evidence":   { "type": "string" },
+          "action":     { "type": "string", "enum": ["HEAL", "REPORT_DEFECT", "INVESTIGATE"] }
+        }
+      }
+    },
+    "healingAttempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testId":     { "type": "string" },
+          "attempt":    { "type": "integer" },
+          "change":     { "type": "string" },
+          "reason":     { "type": "string" },
+          "result":     { "type": "string", "enum": ["PASS", "FAIL"] }
+        }
+      }
+    },
+    "defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "testId":      { "type": "string" },
+          "description": { "type": "string" },
+          "expected":    { "type": "string" },
+          "actual":      { "type": "string" },
+          "severity":    { "type": "string", "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"] }
+        }
+      }
+    }
+  }
+}
