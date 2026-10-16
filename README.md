@@ -1,6 +1,10 @@
-# Flight Tracker
+# Flight Intelligence System
 
-Live flight tracking map with scheduled times, delay predictions and airport boards.
+
+
+Flight delay prediction and airline reliability analytics powered by data-driven intelligence.
+
+
 
 ## Stack
 
