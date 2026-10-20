@@ -162,13 +162,15 @@ jobs:
           REDIS_PORT: 6379
           AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
           ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+          COLLECT_AIRPORTS: ''
 
       - name: Wait for backend
         run: |
-          for i in $(seq 1 30); do
-            curl -sf http://localhost:3100/health > /dev/null 2>&1 && echo "ready" && exit 0
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3100/api-docs-json > /dev/null 2>&1 && echo "Backend ready after ${i}x2s" && exit 0
             sleep 2
-          done; exit 1
+          done
+          echo "::error::Backend did not become ready within 120s"; exit 1
 
       - name: Run all committed API specs (initial)
         id: run_specs
