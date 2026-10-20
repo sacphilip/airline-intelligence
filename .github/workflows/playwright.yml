@@ -6,10 +6,10 @@ on:
     branches: [ main, master ]
 
 jobs:
-  # PRs: fast smoke check only — mocked API, frontend only, no backend needed
+  # PRs from qa/* branches: fast smoke check — mocked API, frontend only
   smoke:
     name: Smoke Tests
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'qa/')
     timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
@@ -34,10 +34,10 @@ jobs:
         path: smoke-report/
         retention-days: 7
 
-  # Pushes to main/master: full suite against real backend
+  # Pushes to main/master, or PRs from non-qa branches (e.g. develop): full suite against real backend
   test:
     name: Full Tests
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && !startsWith(github.head_ref, 'qa/'))
     timeout-minutes: 60
     runs-on: ubuntu-latest
     services:
