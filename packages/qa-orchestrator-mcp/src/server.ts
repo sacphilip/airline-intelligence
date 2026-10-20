@@ -11,6 +11,7 @@ import { browserInstalled, installBrowsers, resolvePlaywright } from './core/pla
 import { BrowserBridge } from './core/browser';
 import { planStory, reviewDirOf, reviewPlannedStory, runApiOrchestrator } from './api/orchestrator';
 import { recordDecision } from './api/agents/human-review';
+import { coverageGatePacket, recordCoverageDecision } from './api/agents/coverage-gate';
 import { OrchestratorState } from './api/schemas/state';
 import {
   analyzeStory, classifyFailures, executeSpec, generateSpec, healTimingFailures, saveTestCases,
@@ -49,6 +50,16 @@ const TOOLS: Tool[] = [
     name: 'qa_api_plan',
     description: 'API tests, step 1: parse the story, map its endpoints from the OpenAPI schema, design test cases and analyse coverage gaps. Writes a review packet; generates nothing. Show the plan to the user, then record their decision with qa_api_review.',
     inputSchema: obj(story, ['story']),
+  },
+  {
+    name: 'qa_api_coverage_review',
+    description: 'API tests, step 1b: record the HUMAN reviewer\'s decision on the coverage gap analysis. Call this after showing the user the coverage gaps from qa_api_plan. Never decide on their behalf. "proceed" moves to the full plan review; "revise" stops the pipeline so gaps can be addressed.',
+    inputSchema: obj({
+      ...story,
+      decision: { type: 'string', enum: ['proceed', 'revise'] },
+      reviewer: { type: 'string', description: 'The person who decided.' },
+      notes: { type: 'string', description: 'Optional notes about the decision or gaps to address.' },
+    }, ['story', 'decision', 'reviewer']),
   },
   {
     name: 'qa_api_review',
@@ -209,8 +220,10 @@ export function createServer(): Server {
     {
       capabilities: { tools: {}, prompts: {} },
       instructions:
-        'QA orchestration for this project. API tests: qa_api_plan → show the plan to the user and ask for their decision → qa_api_review with exactly their answer → qa_api_run. ' +
-        'Never approve or reject a test plan on the user\'s behalf. UI tests: follow the qa-ui-workflow prompt (qa_ui_* tools plus the browser_* tools).',
+        'QA orchestration for this project. ' +
+        'API tests: qa_api_plan → if coverage gate is awaiting, show gaps and ask for decision → qa_api_coverage_review with their answer → qa_api_plan again → show test plan and ask for decision → qa_api_review with their answer → qa_api_run. ' +
+        'Never approve, proceed or reject on the user\'s behalf — both gates require a human decision. ' +
+        'UI tests: follow the qa-ui-workflow prompt (qa_ui_* tools plus the browser_* tools).',
     },
   );
 
@@ -284,11 +297,27 @@ async function handle(server: Server, cfg: ProjectConfig, name: string, args: Re
     case 'qa_api_plan': {
       const storyPath = resolveStory(cfg, args.story);
       const state = await planStory(cfg, storyPath);
+      // Coverage gate: stop here if the gap set hasn't been signed off
+      if (state.stoppedAtCoverage === 'awaiting') {
+        return text(`${coverageGatePacket(state.storyId, state.preCoverage!)}`);
+      }
       const outcome = reviewPlannedStory(cfg, state);
       if (outcome.status === 'decided') {
         return text(`${state.storyId}: this exact plan was already reviewed — ${outcome.record.decision} by ${outcome.record.reviewer}. Run qa_api_run to continue.\n\n${json(summariseApi(cfg, state))}`);
       }
       return text(`${outcome.packet}\n---\nAWAITING HUMAN REVIEW. Show this plan to the user and ask for their decision; then call qa_api_review with exactly what they said.`);
+    }
+
+    case 'qa_api_coverage_review': {
+      const storyPath = resolveStory(cfg, args.story);
+      // Re-run phases 1-4 to get the current coverage so the hash matches
+      const state = await planStory(cfg, storyPath);
+      if (!state.preCoverage) return text(`${state.storyId}: could not compute coverage — check that the story has an Implementation section with endpoints.`, true);
+      recordCoverageDecision(reviewDirOf(cfg), state.storyId, state.preCoverage, args.decision, args.reviewer, args.notes ?? '');
+      if (args.decision === 'proceed') {
+        return text(`Coverage gate approved by ${args.reviewer} for ${state.storyId}. Call qa_api_plan again to see the full test plan.`);
+      }
+      return text(`Coverage gate: revision requested by ${args.reviewer} for ${state.storyId}.${args.notes ? ` Notes: ${args.notes}` : ''} Address the gaps, update the story, then call qa_api_plan to redesign the test suite.`);
     }
 
     case 'qa_api_review': {
@@ -302,6 +331,16 @@ async function handle(server: Server, cfg: ProjectConfig, name: string, args: Re
     case 'qa_api_run': {
       const storyPath = resolveStory(cfg, args.story);
       let state = await runApiOrchestrator(cfg, storyPath, { skipReview: args.skipReview === true });
+
+      // Coverage gate: elicit or ask the user to call qa_api_coverage_review
+      if (state.stoppedAtCoverage === 'awaiting') {
+        const asked = await askForCoverageReview(server, cfg, state);
+        if (asked === 'recorded') state = await runApiOrchestrator(cfg, storyPath, { skipReview: args.skipReview === true });
+        else if (asked === 'declined') return text(`${state.storyId}: the reviewer declined to decide on coverage. Nothing was generated.`);
+        else {
+          return text(`${coverageGatePacket(state.storyId, state.preCoverage!)}\n---\nAWAITING COVERAGE REVIEW. Show the gaps above, ask for the user's decision, record it with qa_api_coverage_review, then call qa_api_run again.`);
+        }
+      }
 
       if (state.stoppedAtReview === 'awaiting') {
         const asked = await askForReview(server, cfg, state);
@@ -361,6 +400,30 @@ async function handle(server: Server, cfg: ProjectConfig, name: string, args: Re
     default:
       return text(`Unknown tool: ${name}`, true);
   }
+}
+
+/** Ask the user to approve or revise coverage gaps via MCP elicitation, when supported. */
+async function askForCoverageReview(server: Server, cfg: ProjectConfig, state: OrchestratorState): Promise<'recorded' | 'declined' | 'unsupported'> {
+  if (!server.getClientCapabilities()?.elicitation) return 'unsupported';
+  const s = state.preCoverage!;
+  const gaps = s.gaps.map(g => `• [${g.gapType}] ${g.recommendation}`).join('\n') || 'none';
+  const result = await server.elicitInput({
+    mode: 'form',
+    message: `Review coverage gaps for ${state.storyId} before the test plan is shown.\n\nCoverage: ${s.coveragePercent}% · ${s.gaps.length} gap(s)\n${gaps}`,
+    requestedSchema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', title: 'Decision', enum: ['proceed', 'revise'] },
+        reviewer: { type: 'string', title: 'Your name' },
+        notes: { type: 'string', title: 'Notes', description: 'Optional: gaps to address when revising' },
+      },
+      required: ['decision', 'reviewer'],
+    },
+  } as any);
+  if (result.action !== 'accept' || !result.content) return 'declined';
+  const c = result.content as Record<string, string>;
+  recordCoverageDecision(reviewDirOf(cfg), state.storyId, state.preCoverage!, c.decision as 'proceed' | 'revise', c.reviewer, c.notes ?? '');
+  return 'recorded';
 }
 
 /** Ask the user for the review decision through the client (MCP elicitation), when supported. */

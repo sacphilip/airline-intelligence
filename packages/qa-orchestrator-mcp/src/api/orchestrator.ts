@@ -9,6 +9,7 @@ import { generateTests } from './agents/test-generator';
 import { analyzeFailures } from './agents/failure-analyzer';
 import { healTests } from './agents/test-healer';
 import { analyzePreTestCoverage, buildPostExecutionReport } from './agents/coverage-analyzer';
+import { checkCoverageGate, coverageGatePacket } from './agents/coverage-gate';
 import { ReviewOutcome, applyExclusions, reviewTestPlan } from './agents/human-review';
 import { runTests } from './playwright/executor';
 import { OrchestratorState } from './schemas/state';
@@ -55,6 +56,15 @@ export async function planStory(cfg: ProjectConfig, storyPath: string): Promise<
   state.preCoverage = analyzePreTestCoverage(state.requirements, state.testDesign);
   log('4/11 COVERAGE GAPS', `${state.preCoverage.coveragePercent}% requirement coverage — ${state.preCoverage.gaps.length} gap(s) identified`);
   for (const gap of state.preCoverage.gaps) log('4/11 COVERAGE GAPS', `  ⚠ [${gap.gapType}] ${gap.recommendation}`);
+
+  // Phase 4b — Coverage gate: stop until a human approves the gap set
+  const gateStatus = checkCoverageGate(reviewDirOf(cfg), storyId, state.preCoverage);
+  if (gateStatus === 'awaiting') {
+    state.stoppedAtCoverage = 'awaiting';
+    log('4b/11 COVERAGE GATE', 'No coverage review decision yet. Stopping before plan review.');
+    return state;
+  }
+  log('4b/11 COVERAGE GATE', 'Coverage approved — continuing to plan review.');
   return state;
 }
 
@@ -80,6 +90,13 @@ export interface RunOptions {
 export async function runApiOrchestrator(cfg: ProjectConfig, storyPath: string, options: RunOptions = {}): Promise<OrchestratorState> {
   const state = await planStory(cfg, storyPath);
   const { storyId } = state;
+
+  // Phase 4b gate — stop if coverage hasn't been signed off
+  if (state.stoppedAtCoverage === 'awaiting') {
+    log('4b/11 COVERAGE GATE', 'Stopping at coverage gate — awaiting human review of gaps.');
+    writeGithubSummary(state);
+    return state;
+  }
 
   // Phase 5 — Human review of the test plan (nothing is generated or run until approved)
   log('5/11 HUMAN REVIEW', options.skipReview ? 'Skipped (skipReview)' : 'Checking for a reviewer decision…');

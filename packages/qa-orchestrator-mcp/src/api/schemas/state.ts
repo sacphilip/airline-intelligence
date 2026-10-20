@@ -14,6 +14,8 @@ export interface OrchestratorState {
   testDesign?: TestDesign;
   preCoverage?: PreTestCoverageAnalysis;
   review?: ReviewRecord;
+  /** Set when the run stopped at the coverage gate: waiting for a human to approve or revise. */
+  stoppedAtCoverage?: 'awaiting';
   /** Set when the run stopped at the review gate: waiting for a decision, or rejected. */
   stoppedAtReview?: 'awaiting' | 'rejected';
   /** Where the pending review lives, when stopped at the review gate. */
