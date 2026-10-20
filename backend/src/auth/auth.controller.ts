@@ -47,11 +47,11 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@Req() req: Request) {
+  async me(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const sessionId: string | undefined = req.cookies?.[COOKIE];
-    if (!sessionId) return null;
+    if (!sessionId) { res.json(null); return; }
     const session = await this.auth.getSession(sessionId);
-    if (!session) return null;
+    if (!session) { res.json(null); return; }
     return { id: session.userId, email: session.email, firstName: session.firstName };
   }
 }
