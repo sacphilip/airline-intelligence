@@ -5,6 +5,7 @@ import { MapTab } from '@/components/tracker/MapTab';
 import { FlightSearchTab } from '@/components/flight/FlightSearchTab';
 import { DelaysTab } from '@/components/delays/DelaysTab';
 import { AirlineTab } from '@/components/airline/AirlineTab';
+import { api } from '@/lib/api';
 
 type Tab = 'map' | 'flight' | 'delays' | 'airline';
 
@@ -22,10 +23,15 @@ export default function Home() {
   const [pendingAirlineIata, setPendingAirlineIata]     = useState<string | null>(null);
   const [pendingRoute, setPendingRoute]                 = useState<{ from: string; to: string } | null>(null);
   const [dark, setDark] = useState(true);
+  const [currentUser, setCurrentUser] = useState<{ id: number; email: string; firstName: string | null } | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
   }, [dark]);
+
+  useEffect(() => {
+    api.authMe().then(setCurrentUser).catch(() => setCurrentUser(null));
+  }, []);
 
   useEffect(() => {
     const followHash = () => {
@@ -65,23 +71,46 @@ export default function Home() {
             <span className="font-bold text-base tracking-tight">Flight Tracker</span>
             <span className="text-xs text-muted-foreground hidden sm:block">Live · ADS-B + AeroDataBox</span>
           </div>
-          {/* Dark / light toggle */}
-          <button
-            onClick={() => setDark(d => !d)}
-            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition"
-            title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {dark ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
+          <div className="flex items-center gap-2">
+            {/* Auth nav */}
+            {currentUser ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground hidden sm:block">
+                  {currentUser.firstName ?? currentUser.email.split('@')[0]}
+                </span>
+                <button
+                  onClick={async () => { await api.authLogout(); setCurrentUser(null); }}
+                  className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition"
+                >
+                  Log out
+                </button>
+              </div>
             ) : (
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />
-              </svg>
+              <a
+                href="/login"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition"
+              >
+                Log in
+              </a>
             )}
-          </button>
+            {/* Dark / light toggle */}
+            <button
+              onClick={() => setDark(d => !d)}
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition"
+              title={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {dark ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Tab bar */}
