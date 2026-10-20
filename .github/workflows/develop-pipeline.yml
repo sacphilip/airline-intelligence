@@ -1,18 +1,18 @@
-name: Develop Pipeline
+﻿name: Develop Pipeline
 
-# Post-merge regression — runs after every push to develop.
+# Post-merge regression â€” runs after every push to develop.
 # Smoke already passed on the PR; this runs the full suite and notifies.
 #
 # Jobs (parallel):
-#   ui-regression  — real backend + live data, full Playwright UI suite
-#   api-regression — real backend, all committed us-NNN.spec.ts files
+#   ui-regression  â€” real backend + live data, full Playwright UI suite
+#   api-regression â€” real backend, all committed us-NNN.spec.ts files
 # Then:
-#   notify — email sacphilip@gmail.com with per-job results + run link
+#   notify â€” email sacphilip@gmail.com with per-job results + run link
 #
 # Required secrets:
-#   AERODATABOX_KEY            — live flight data
-#   NOTIFY_GMAIL_USER          — Gmail address CI sends from
-#   NOTIFY_GMAIL_APP_PASSWORD  — Gmail App Password (myaccount.google.com/apppasswords)
+#   AERODATABOX_KEY            â€” live flight data
+#   NOTIFY_GMAIL_USER          â€” Gmail address CI sends from
+#   NOTIFY_GMAIL_APP_PASSWORD  â€” Gmail App Password (myaccount.google.com/apppasswords)
 
 on:
   push:
@@ -28,9 +28,9 @@ permissions:
 
 jobs:
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # UI Regression
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ui-regression:
     name: Regression / UI
     runs-on: ubuntu-latest
@@ -55,9 +55,9 @@ jobs:
         ports: ['6379:6379']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -89,23 +89,23 @@ jobs:
           AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
           ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-regression-report
           path: playwright-report/
           retention-days: 14
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-regression-results
           path: test-results/
           retention-days: 7
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # API Regression
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   api-regression:
     name: Regression / API
     runs-on: ubuntu-latest
@@ -130,9 +130,9 @@ jobs:
         ports: ['6379:6379']
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -210,16 +210,16 @@ jobs:
           echo "::error::See apps/qa-api-orchestrator/reports/heal-summary.json for details."
           exit 1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: api-regression-reports
           path: apps/qa-api-orchestrator/reports/
           retention-days: 14
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Notify  (always runs, even if regression failed)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   notify:
     name: Notify
     runs-on: ubuntu-latest
@@ -233,10 +233,10 @@ jobs:
           R1="${{ needs.ui-regression.result }}"
           R2="${{ needs.api-regression.result }}"
           if [ "$R1" = "success" ] && [ "$R2" = "success" ]; then
-            echo "icon=✅"     >> $GITHUB_OUTPUT
+            echo "icon=âœ…"     >> $GITHUB_OUTPUT
             echo "label=PASSED" >> $GITHUB_OUTPUT
           else
-            echo "icon=❌"     >> $GITHUB_OUTPUT
+            echo "icon=âŒ"     >> $GITHUB_OUTPUT
             echo "label=FAILED" >> $GITHUB_OUTPUT
           fi
 
@@ -252,7 +252,7 @@ jobs:
           from: Flight Tracker CI <${{ secrets.NOTIFY_GMAIL_USER }}>
           subject: >-
             ${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}
-            — ${{ github.repository }} @ ${{ github.ref_name }}
+            â€” ${{ github.repository }} @ ${{ github.ref_name }}
           html_body: |
             <h2>${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}</h2>
             <table cellpadding="6" style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
@@ -267,15 +267,15 @@ jobs:
               <tr style="background:#f5f5f5"><th align="left">Job</th><th align="left">Result</th></tr>
               <tr>
                 <td>UI Regression</td>
-                <td>${{ needs.ui-regression.result == 'success' && '✅ passed' || '❌ failed' }}</td>
+                <td>${{ needs.ui-regression.result == 'success' && 'âœ… passed' || 'âŒ failed' }}</td>
               </tr>
               <tr>
                 <td>API Regression</td>
-                <td>${{ needs.api-regression.result == 'success' && '✅ passed' || '❌ failed' }}</td>
+                <td>${{ needs.api-regression.result == 'success' && 'âœ… passed' || 'âŒ failed' }}</td>
               </tr>
             </table>
             <br>
             <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                style="background:#0969da;color:#fff;padding:8px 16px;text-decoration:none;border-radius:4px;font-family:sans-serif">
-              View full run →
+              View full run â†’
             </a>

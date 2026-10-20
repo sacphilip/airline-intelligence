@@ -110,15 +110,17 @@ test.describe('US-011 — User Login', () => {
     await expect(page.getByRole('link', { name: 'Log in' })).not.toBeVisible();
   });
 
-  test('TC-011-09: Clicking Log out calls logout endpoint and nav reverts to Log in', async ({ page }) => {
+  test('TC-011-09: Clicking Log out redirects to login page', async ({ page }) => {
     await mockFlightApis(page);
     await page.route('**/api/auth/me',     r => r.fulfill({ status: 200, json: ALICE }));
     await page.route('**/api/auth/logout', r => r.fulfill({ status: 200, json: { ok: true } }));
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-    await page.getByRole('button', { name: 'Log out' }).click();
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
-    await expect(page.getByText('Alice')).not.toBeVisible();
+    await Promise.all([
+      page.waitForURL('**/login'),
+      page.getByRole('button', { name: 'Log out' }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/login/);
   });
 
   test('TC-011-10: Submitting with empty password shows error and does not call API', async ({ page }) => {
@@ -194,24 +196,56 @@ test.describe('US-011 — User Login', () => {
     expect(cookieStr).not.toMatch(/\bsid\b/);
   });
 
-  // AC-08 (extended): after logout the session is gone server-side — next authMe returns null
-  test('TC-011-15: After logout, subsequent authMe returns null', async ({ page }) => {
+  // AC-08: logout clears cookie AND invalidates server-side session
+  // Uses the REAL backend — no auth mocks — so it catches genuine Redis/cookie bugs.
+  // Requires: alice@example.com / password123 in the database, backend running at :3100.
+  test('TC-011-15: Logout clears cookie and invalidates server-side session (real backend)', async ({ page }) => {
+    // Only mock flight APIs to protect AeroDataBox quota; auth goes to real backend
     await mockFlightApis(page);
-    let sessionActive = true;
-    await page.route('**/api/auth/me', r =>
-      r.fulfill({ status: 200, json: sessionActive ? ALICE : null })
-    );
-    await page.route('**/api/auth/logout', async r => {
-      sessionActive = false;
-      await r.fulfill({ status: 200, json: { ok: true } });
-    });
-    await page.goto('/');
+
+    // 1. Real login
+    await page.goto('/login');
+    await page.getByLabel('Email').fill('alice@example.com');
+    await page.getByLabel('Password').fill('password123');
+    await Promise.all([
+      page.waitForURL('http://localhost:3000/'),
+      page.getByRole('button', { name: 'Log in' }).click(),
+    ]);
     await expect(page.getByText('Alice')).toBeVisible();
-    await page.getByRole('button', { name: 'Log out' }).click();
-    // Reload triggers authMe again — server-side session is gone
+
+    // 2. Capture the session ID from the cookie jar (Playwright can read HttpOnly cookies)
+    const cookiesBefore = await page.context().cookies();
+    const sidCookie = cookiesBefore.find(c => c.name === 'sid');
+    expect(sidCookie, 'sid cookie must exist after login').toBeDefined();
+    const sessionId = sidCookie!.value;
+
+    // 3. Real logout — must redirect to /login
+    await Promise.all([
+      page.waitForURL('**/login'),
+      page.getByRole('button', { name: 'Log out' }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/login/);
+
+    // 4. Cookie must be cleared from the browser
+    const cookiesAfter = await page.context().cookies();
+    expect(
+      cookiesAfter.find(c => c.name === 'sid'),
+      'sid cookie must be absent after logout',
+    ).toBeUndefined();
+
+    // 5. Reload confirms we stay on /login (no active session)
     await page.reload();
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    await expect(page).toHaveURL(/\/login/);
     await expect(page.getByText('Alice')).not.toBeVisible();
+
+    // 6. Server-side: the old session ID must be invalidated in Redis
+    //    Call /api/auth/me directly with the captured session ID; must return null.
+    const stale = await page.request.get('http://localhost:3100/api/auth/me', {
+      headers: { Cookie: `sid=${sessionId}` },
+    });
+    expect(stale.status()).toBe(200);
+    const staleBody = await stale.json();
+    expect(staleBody, 'Stale session ID must be invalidated server-side').toBeNull();
   });
 
   // AC-09: concurrent sessions — two browser contexts can each hold an active session
