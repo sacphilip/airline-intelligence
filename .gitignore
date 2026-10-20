@@ -19,3 +19,4 @@ weather_history.json
 
 # Locator healer output (CI artifact)
 heal-report/
+smoke-results.json
