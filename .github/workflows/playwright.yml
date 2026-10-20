@@ -1,17 +1,17 @@
 name: Playwright Tests
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ develop ]
 
 jobs:
-  # PRs from qa/* or develop: fast smoke check — mocked API, frontend only
+  # PRs from qa/* to develop: fast smoke check — mocked API, frontend only
   smoke:
     name: Smoke Tests
     if: >
       github.event_name == 'pull_request' &&
-      (startsWith(github.head_ref, 'qa/') || github.head_ref == 'develop')
+      startsWith(github.head_ref, 'qa/')
     timeout-minutes: 20
     runs-on: ubuntu-latest
     # pull-requests: write lets the locator healer comment on the PR.
@@ -72,13 +72,12 @@ jobs:
         echo "::error::Smoke tests failed and not every failure could be healed — see the PR comment or job summary."
         exit 1
 
-  # PRs from feature/* (not qa/* or develop): full suite against real backend
+  # PRs from feature/dev branches to develop: full suite against real backend
   test-pr:
     name: Full Tests (PR)
     if: >
       github.event_name == 'pull_request' &&
-      !startsWith(github.head_ref, 'qa/') &&
-      github.head_ref != 'develop'
+      !startsWith(github.head_ref, 'qa/')
     timeout-minutes: 60
     runs-on: ubuntu-latest
     services:
