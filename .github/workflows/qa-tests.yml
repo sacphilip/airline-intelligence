@@ -106,7 +106,7 @@ jobs:
           ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
 
       - name: Upload Playwright HTML report
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-playwright-report
@@ -114,7 +114,7 @@ jobs:
           retention-days: 14
 
       - name: Upload screenshots and traces
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-test-results
@@ -313,7 +313,7 @@ jobs:
           exit 1
 
       - name: Upload API test reports
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: api-test-reports

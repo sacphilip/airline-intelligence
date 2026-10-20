@@ -89,14 +89,14 @@ jobs:
           AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
           ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-regression-report
           path: playwright-report/
           retention-days: 14
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: ui-regression-results
@@ -210,7 +210,7 @@ jobs:
           echo "::error::See apps/qa-api-orchestrator/reports/heal-summary.json for details."
           exit 1
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: api-regression-reports

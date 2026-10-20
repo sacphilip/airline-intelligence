@@ -29,7 +29,7 @@ jobs:
       run: npx playwright test --config playwright.smoke.config.ts
       env:
         CI: 'true'
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       if: ${{ !cancelled() }}
       with:
         name: smoke-report
@@ -87,7 +87,7 @@ jobs:
         FRONTEND_URL: http://localhost:3000
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       if: ${{ !cancelled() }}
       with:
         name: playwright-report
@@ -171,7 +171,7 @@ jobs:
         FRONTEND_URL: http://localhost:3000
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
-    - uses: actions/upload-artifact@v5
+    - uses: actions/upload-artifact@v6
       if: steps.changed.outputs.files != '' && !cancelled()
       with:
         name: feature-api-report
