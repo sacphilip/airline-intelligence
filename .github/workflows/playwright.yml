@@ -1,7 +1,8 @@
 name: Playwright Tests
 on:
+  # Everything merges into develop; main isn't part of the CI flow.
   push:
-    branches: [ main, master, develop ]
+    branches: [ develop ]
   pull_request:
     branches: [ develop ]
 
@@ -99,7 +100,7 @@ jobs:
         echo "::error::Smoke tests failed and not every failure could be healed — see the PR comment or job summary."
         exit 1
 
-  # PRs from feature/dev branches to develop: full suite against real backend
+  # PRs from any other branch (feature/*) to develop: full suite against real backend
   test-pr:
     name: Full Tests (PR)
     if: >
@@ -156,7 +157,7 @@ jobs:
         path: playwright-report/
         retention-days: 30
 
-  # Post-merge to main: run only the user-story API specs that landed in this merge
+  # Post-merge to develop: run only the user-story API specs that landed in this merge
   test-post-merge:
     name: Feature API Tests (post-merge)
     if: github.event_name == 'push'
