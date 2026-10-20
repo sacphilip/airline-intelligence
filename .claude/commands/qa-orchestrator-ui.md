@@ -15,6 +15,10 @@ The argument may be:
 
 If nothing matches, list `user-stories/` and stop.
 
+**Prerequisite — GitHub CLI.** Run `gh auth status`. If `gh` is missing or not logged in, **stop**
+and tell the user to run, once: `winget install --id GitHub.cli` (then open a new terminal) and
+`gh auth login` (GitHub.com → HTTPS → browser). The run must end with a PR (Stage 10).
+
 ---
 
 ## Step 2 — Initialise execution context
@@ -95,7 +99,10 @@ enrichment instructions. For each `// TODO: [MCP-ENRICH]` in the generated spec:
 1. Use Playwright MCP to navigate to the relevant page at `http://localhost:3000`
 2. Interact as the scenario describes
 3. Replace the TODO with real, specific assertions based on what you observe
-4. Mock all API calls via `page.route()` — **AeroDataBox quota is nearly exhausted**
+4. Use the **real backend** — no `page.route()` mocks or canned responses. Assert on what the
+   backend actually returns (capture it with `page.waitForResponse`, as `tests/support/live.ts`
+   does) rather than fixed values, since flight data is live. A state the real backend can't
+   produce on demand (e.g. a 500) is marked not automatable with a reason, not faked
 5. Prefer `getByRole` / `getByLabel` / `getByPlaceholder` locators; read the component source
    before writing any locator
 
@@ -178,16 +185,71 @@ Show the user: pass/fail counts, any unresolved defects, report path.
 
 ---
 
-## Stage 10 — Git commit and push
+## Stage 10 — Commit and open a Pull Request against `develop` (always the last step)
 
-Commit the generated spec file to branch `qa/<story-id-lower>` and push:
+Skip only if no spec was generated (e.g. the coverage review was rejected).
 
-If the push fails, show the warning and give the user the manual command:
+**Which files.** The generated spec, plus every test-support file this run changed during
+enrichment (4b) or healing (7) — e.g. page objects in `tests/pages/`, `tests/fixtures/`,
+`tests/data/`. Never application source (`frontend/`, `backend/`), and never reports,
+`test-results/`, `*.db*` or `tsconfig.tsbuildinfo`. List the files before committing.
+
+**Work in a separate git worktree**, never in the main checkout (other sessions use it):
 ```bash
-git checkout -B qa/<story-id-lower>
-git add tests/specs/<spec-file>
-git commit -m "test(<story-id-lower>): add generated UI spec"
-git push -u origin qa/<story-id-lower>
+git fetch origin develop
+git worktree add -B qa/<story-id-lower>-ui ../flight-tracker-wt/qa-<story-id-lower>-ui origin/develop
+```
+(If that worktree folder already exists from an earlier run, reuse it and run
+`git -C <worktree> pull --rebase origin develop` instead of adding it again.)
+
+Copy each file into the worktree at the same relative path, then commit only those files:
+```bash
+cp tests/specs/<spec-file> ../flight-tracker-wt/qa-<story-id-lower>-ui/tests/specs/
+# …and any changed tests/pages|fixtures|data files, same relative paths
+cd ../flight-tracker-wt/qa-<story-id-lower>-ui
+git add tests/specs/<spec-file> <other files by name>
+git commit -F <message-file>      # "test(<story-id-lower>): add UI spec" + summary bullets + your co-author line
+git push -u origin qa/<story-id-lower>-ui
+```
+If a copied page object conflicts with a newer version on `develop`, stop and show the user the
+difference instead of overwriting it. Never `git add -A`, `--no-verify` or force-push; if the push
+is rejected, `git pull --rebase` and push again.
+
+**Open the PR** — **as a draft if any test failed, was skipped as not enriched, or the run was
+BLOCKED**:
+```bash
+gh pr create --repo sacphilip/airline-intelligence --base develop --head qa/<story-id-lower>-ui \
+  --title "test(<story-id-lower>): UI tests for <story title>" --body-file <body-file> [--draft]
+```
+If a PR for the branch already exists, update it (`gh pr edit qa/<story-id-lower>-ui --body-file <body-file>`)
+and report its URL (`gh pr view qa/<story-id-lower>-ui --json url -q .url`).
+If `gh pr create` fails, show the error and give the user
+`https://github.com/sacphilip/airline-intelligence/compare/develop...qa/<story-id-lower>-ui?expand=1`.
+Don't report the run as finished without a PR URL or that link.
+
+**PR body template:**
+```markdown
+## UI tests for <story-id> — <story title>
+User story: `user-stories/<filename>.md`
+
+## Coverage review
+<if this run had a coverage review: coverage % · approved by <reviewer>; excluded IDs if any — otherwise omit this section>
+
+## Results
+✅ <passed> passed · ❌ <failed> failed · ⏭ <skipped> skipped · status <PASS | FAIL | BLOCKED>
+Enrichment (4b): <done | skipped — reason>
+
+<if failures: one line per failing test — id, first error line, classification>
+<if product defects: one line each — these are app bugs, not test bugs>
+
+## Files
+<every committed file, one per line, with created / modified>
+
+## How to run
+`npx playwright test <spec-file>` from the repo root (frontend :3000 and backend :3100 running)
+
+---
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
 
 ---
@@ -200,4 +262,4 @@ git push -u origin qa/<story-id-lower>
 - Failing test titles and first error line
 - Generated spec path
 - HTML report path
-- QA branch the spec was pushed to, or push failure warning
+- QA branch (`qa/<story-id-lower>-ui`), worktree path, and the PR URL (or the manual compare link if PR creation failed)

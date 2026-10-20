@@ -36,6 +36,12 @@ function deriveStoryId(storyPath: string): string {
 function commitAndPushSpec(state: OrchestratorState): void {
   const { storyId, generatedTestPath } = state;
   if (!generatedTestPath) return;
+  // The /qa-api command commits from a separate worktree and opens a PR itself; this phase
+  // switches the current checkout's branch, which disturbs other work in a shared folder.
+  if (process.env.QA_SKIP_GIT === '1') {
+    log('12/12 GIT PUSH', 'Skipped (QA_SKIP_GIT=1) — the caller commits the spec');
+    return;
+  }
 
   const branch = `qa/${storyId.toLowerCase()}`;
   const run = state.finalRun ?? state.firstRun;

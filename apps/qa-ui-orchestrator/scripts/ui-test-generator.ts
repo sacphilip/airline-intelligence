@@ -31,18 +31,7 @@ const LOCATORS: Record<string, string> = {
   historyToggle:  `page.getByRole('button', { name: /Flight history/i })`,
 };
 
-// ── API mock setup ────────────────────────────────────────────────────────────
-
-const MOCK_SETUP = `
-async function mockApi(page: Page): Promise<void> {
-  await page.route('**/api/search**',           r => r.fulfill({ status: 200, json: { legs: [] } }));
-  await page.route('**/api/route/**',            r => r.fulfill({ status: 200, json: {} }));
-  await page.route('**/api/flight/history**',    r => r.fulfill({ status: 200, json: { flights: [] } }));
-  await page.route('**/api/airline/profile**',   r => r.fulfill({ status: 200, json: {} }));
-  await page.route('**/api/airline/rankings**',  r => r.fulfill({ status: 200, json: [] }));
-  await page.route('**/api/delays/**',           r => r.fulfill({ status: 200, json: [] }));
-}
-`.trim();
+// No API mocks: generated tests run against the real backend.
 
 // ── Detect primary tab from story content ────────────────────────────────────
 
@@ -62,7 +51,6 @@ function buildTestBody(tc: any, tab: string): string[] {
 
   switch ((tc.type ?? 'Functional').toLowerCase()) {
     case 'negative':
-      lines.push(`  await mockApi(page);`);
       lines.push(`  await page.goto('/');`);
       lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — observe what error state renders`);
@@ -70,7 +58,6 @@ function buildTestBody(tc: any, tab: string): string[] {
       break;
 
     case 'ui':
-      lines.push(`  await mockApi(page);`);
       lines.push(`  await page.goto('/');`);
       lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — observe exact UI state and add assertions`);
@@ -78,21 +65,18 @@ function buildTestBody(tc: any, tab: string): string[] {
 
     case 'state':
     case 'role':
-      lines.push(`  await mockApi(page);`);
       lines.push(`  await page.goto('/');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — test state transition or hash routing`);
       lines.push(`  await expect(page).toHaveURL('/');`);
       break;
 
     case 'boundary':
-      lines.push(`  await mockApi(page);`);
       lines.push(`  await page.goto('/');`);
       lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — test boundary values and observe validation`);
       break;
 
     default: // Functional
-      lines.push(`  await mockApi(page);`);
       lines.push(`  await page.goto('/');`);
       lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — navigate, interact and verify result`);
@@ -137,9 +121,7 @@ const lines: string[] = [
   ` * ${storyId} — generated base spec`,
   ` * Deterministic scaffold — enrich with Playwright MCP (look for TODO: [MCP-ENRICH])`,
   ` */`,
-  `import { test, expect, Page } from '@playwright/test';`,
-  ``,
-  MOCK_SETUP,
+  `import { test, expect } from '@playwright/test';`,
   ``,
   `test.describe('${storyId}', () => {`,
 ];

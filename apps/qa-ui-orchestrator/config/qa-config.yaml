@@ -43,8 +43,9 @@ locatorPriority:
   - xpath
 
 apiInterception:
-  # All API calls originate from the browser to this base URL.
-  # Intercept via page.route() in beforeEach or individual tests.
+  # All API calls originate from the browser to this base URL. Tests run against the real
+  # backend: don't mock these with page.route(); capture and assert on the real responses
+  # (see tests/support/live.ts).
   base: http://localhost:3100
   endpoints:
     search:        /api/search

@@ -17,8 +17,7 @@ npx tsx scripts/ui-test-generator.ts
 The script reads `testCases[]` from `workflows/execution-context.json` and writes a base spec to
 `tests/specs/us-{NNN}-{slug}.spec.ts` containing:
 - Correct imports and `test.describe` structure
-- `mockApi()` helper intercepting all API endpoints with `page.route()`
-- One test stub per automatable test case
+- One test stub per automatable test case (no API mocks — tests run against the real backend)
 - A `// TODO: [MCP-ENRICH] <scenario>` comment in each stub where assertions are needed
 
 It also writes `automatedTests[]` to `workflows/execution-context.json` and sets `status: "AUTOMATION_DONE"`.
@@ -32,7 +31,7 @@ Only do this step if the frontend is running at `http://localhost:3000`.
 Open the generated spec. For every `// TODO: [MCP-ENRICH]` comment:
 
 1. Use the `playwright` MCP to navigate to `http://localhost:3000`
-2. Set up the same `page.route()` mocks the spec uses (or let the real backend serve)
+2. Let the real backend serve every request — don't add `page.route()` mocks
 3. Perform the interaction described in the TODO comment
 4. Observe exactly what the page renders: text content, attribute values, element states
 5. Replace the TODO comment with real assertions based on what you observed
@@ -60,7 +59,10 @@ Open the generated spec. For every `// TODO: [MCP-ENRICH]` comment:
 
 ### Rules
 - Read the component source (`frontend/src/components/`) before writing locators — never guess
-- Mock all API calls via `page.route()` — AeroDataBox quota is nearly exhausted
+- Use the real backend; no `page.route()` mocks. Flight data is live, so assert on the response the
+  page actually received (`captureApi()` in `tests/support/live.ts` captures it) rather than fixed values
+- A state the real backend can't produce on demand (e.g. a 500) is not faked: leave the test as
+  `test.fixme` with the reason, and mark the case `automation: false` in the execution context
 - No `page.waitForTimeout()` — use Playwright auto-waiting and assertion timeouts
 - Never weaken an assertion; replace wrong ones with correct ones
 

@@ -9,13 +9,20 @@ Steps:
    - A full filename: `US-001-search-by-flight-number.md` → use directly
    Match case-insensitively. If nothing matches, list the available stories and stop.
 
+   **Prerequisite — GitHub CLI.** Run `gh auth status`. If `gh` is missing or not logged in,
+   **stop** and tell the user to run, once: `winget install --id GitHub.cli` (then open a new
+   terminal) and `gh auth login` (GitHub.com → HTTPS → browser). The run must end with a PR.
+
 2. Check whether the orchestrator has been built:
    - If `apps/qa-api-orchestrator/dist/src/cli.js` does not exist, run `npm run build` in `apps/qa-api-orchestrator/` first.
 
 3. Run the orchestrator using the dev CLI (tsx) so no global install is needed:
    ```
-   cd apps/qa-api-orchestrator && npm run qa ../../<resolved-story-path>
+   cd apps/qa-api-orchestrator && QA_SKIP_GIT=1 npm run qa ../../<resolved-story-path>
    ```
+   (PowerShell: `$env:QA_SKIP_GIT = "1"; npm run qa ../../<resolved-story-path>`.)
+   `QA_SKIP_GIT=1` turns off the orchestrator's own git phase, which would switch the shared
+   checkout's branch; step 5 commits and opens the PR from a separate worktree instead.
    Pass through any environment variables already set (API_BASE_URL, OPENAI_URL, ANTHROPIC_API_KEY).
    Do not pass `--review=auto` or set `QA_REVIEW=auto` unless the user explicitly asks to skip the review.
 
@@ -39,14 +46,71 @@ Steps:
    **Rejected (exit code 4).** Report the reviewer's reason; no tests were generated.
    **Error (exit code 2).** Show the error (e.g. an invalid decision file) and stop.
 
-4. After the run completes, report:
+4. Once step 5 (commit + PR) is done, report:
    - Which story was tested
    - Who approved the test plan and any excluded test case IDs
    - Passed / Failed / Total counts
    - List any failing test titles and their first error line
    - Path to the generated test file
    - Path to the HTML report (if generated)
-   - The QA feature branch the spec was pushed to (look for `12/12 GIT PUSH` lines in the output).
-     If the push failed, show the warning and remind the user they can push manually:
-     `git checkout -B qa/<story-id-lower> && git add <spec-path> && git commit -m "..." && git push -u origin qa/<story-id-lower>`
-   - If the run stopped for review (exit code 3) or was rejected (exit code 4), skip git push — nothing was generated.
+   - The PR URL from step 5
+
+5. **Commit the spec and open a Pull Request against `develop` — always the last step.**
+   Skip this step only if the run stopped for review (exit code 3) or was rejected (exit code 4):
+   nothing was generated.
+
+   Work in a separate **git worktree**, never in the main checkout (other sessions use it):
+   ```
+   git fetch origin develop
+   git worktree add -B qa/<story-id-lower>-api ../flight-tracker-wt/qa-<story-id-lower>-api origin/develop
+   ```
+   (If that worktree folder already exists from an earlier run, reuse it and run
+   `git -C <worktree> pull --rebase origin develop` instead of adding it again.)
+
+   Copy the generated spec into the worktree at the same path, then commit only that file:
+   ```
+   cp apps/qa-api-orchestrator/tests/generated/<story-id-lower>.spec.ts ../flight-tracker-wt/qa-<story-id-lower>-api/apps/qa-api-orchestrator/tests/generated/
+   cd ../flight-tracker-wt/qa-<story-id-lower>-api
+   git add apps/qa-api-orchestrator/tests/generated/<story-id-lower>.spec.ts
+   git commit -F <message-file>      # "test(<story-id-lower>): add generated API spec" + summary bullets + your co-author line
+   git push -u origin qa/<story-id-lower>-api
+   ```
+   Never `git add -A`, never `--no-verify`, never force-push. If the push is rejected because
+   the remote branch moved, `git pull --rebase` and push again.
+
+   Open the PR (body template below) — **as a draft if any test is still failing**:
+   ```
+   gh pr create --repo sacphilip/airline-intelligence --base develop --head qa/<story-id-lower>-api \
+     --title "test(<story-id-lower>): API tests for <story title>" --body-file <body-file> [--draft]
+   ```
+   If a PR for the branch already exists, update it instead (`gh pr edit qa/<story-id-lower>-api --body-file <body-file>`)
+   and report its URL (`gh pr view qa/<story-id-lower>-api --json url -q .url`).
+   If `gh pr create` fails, show the error and give the user
+   `https://github.com/sacphilip/airline-intelligence/compare/develop...qa/<story-id-lower>-api?expand=1`.
+   Don't report the run as finished without a PR URL or that link.
+
+   **PR body template:**
+   ```markdown
+   ## API tests for <story-id> — <story title>
+   User story: `user-stories/<filename>.md`
+
+   ## Test plan review
+   Approved by <reviewer> (<mode>)<; excluded: <ids> if any><; comment: "<comment>" if any>
+
+   ## Results
+   ✅ <passed> passed · ❌ <failed> failed · <total> total<; auto-healed: <n> if any>
+
+   <if failures: one line per failing test — title, first error line, diagnosis (APPLICATION_BUG / TEST_BUG / …)>
+
+   ## Coverage
+   <score>% — <verdict>. <remaining gaps, one per line>
+
+   ## Files
+   - `apps/qa-api-orchestrator/tests/generated/<story-id-lower>.spec.ts`
+
+   ## How to run
+   `cd apps/qa-api-orchestrator && npx playwright test tests/generated/<story-id-lower>.spec.ts` (backend on :3100)
+
+   ---
+   🤖 Generated with [Claude Code](https://claude.com/claude-code)
+   ```
