@@ -68,7 +68,7 @@ export default function Home() {
         <div className="flex items-center justify-between px-4 pt-2">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">✈</span>
-            <span className="font-bold text-base tracking-tight">Flight Tracker</span>
+            <span className="font-bold text-base tracking-tight">Flight Intelligence System</span>
             <span className="text-xs text-muted-foreground hidden sm:block">Live · ADS-B + AeroDataBox</span>
           </div>
           <div className="flex items-center gap-2">
@@ -76,7 +76,7 @@ export default function Home() {
             {currentUser ? (
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground hidden sm:block">
-                  {currentUser.firstName ?? currentUser.email.split('@')[0]}
+                  {currentUser.firstName ?? currentUser.email?.split('@')[0]}
                 </span>
                 <button
                   onClick={async () => { await api.authLogout(); setCurrentUser(null); }}
