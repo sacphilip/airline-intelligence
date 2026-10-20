@@ -180,13 +180,13 @@ jobs:
 
       - name: Wait for backend to be ready
         run: |
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3100/api-docs-json > /dev/null 2>&1; then
               echo "Backend ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
+            echo "  attempt $i/60 — retrying in 2 s"; sleep 2
           done
-          echo "ERROR: backend did not become ready within 60 s"; exit 1
+          echo "::error::Backend did not become ready within 120s"; exit 1
 
       - name: Run API smoke tests
         run: npx playwright test --config playwright.smoke.config.ts
