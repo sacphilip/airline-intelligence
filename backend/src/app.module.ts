@@ -23,6 +23,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { GeoModule } from './geo/geo.module';
 import { CollectorModule } from './collector/collector.module';
 import { PredictionModule } from './prediction/prediction.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { PredictionModule } from './prediction/prediction.module';
     AnalyticsModule,
     GeoModule,
     CollectorModule,
+    HealthModule,
   ],
 })
 export class AppModule {}
