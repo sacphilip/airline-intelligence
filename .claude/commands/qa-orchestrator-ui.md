@@ -63,6 +63,39 @@ strategy (UI / MANUAL / NOT_AUTOMATABLE).
 
 ---
 
+## Stage 2b — Coverage gap analysis (DETERMINISTIC + human review)
+
+```bash
+cd apps/qa-ui-orchestrator && npx tsx scripts/coverage-analyzer.ts
+```
+
+The script parses all acceptance-criteria bullets from the story, maps each to the designed test
+cases by keyword matching, and calculates coverage %.
+
+**Exit code 3 — human review required.** The script prints the full coverage packet (requirement
+table, gap list, test case list) and writes two files:
+- `reports/review/<ID>-ui-coverage.md` — human-readable summary
+- `reports/review/<ID>-ui-coverage.json` — decision file (`"decision": "pending"`)
+
+When this happens:
+- Show the user the coverage %, every gap, and the planned test cases with their IDs
+- Point out any obvious gaps (e.g. AC not covered by any TC) but do not decide for them
+- Ask the user to choose: approve, approve without certain test case IDs, or reject (reason required)
+  Also ask for the reviewer name to record
+- **Never approve, exclude or reject on the user's behalf**
+- Write exactly the user's answer into `<ID>-ui-coverage.json`
+  (`decision`, `excludedTestCaseIds`, `reviewer`, `comment`); leave `storyId`, `tcHash` and
+  `testCaseIds` unchanged
+- Then re-run the coverage-analyzer (it reads the decision file and continues on approval)
+
+If `excludedTestCaseIds` is non-empty, remove those IDs from `testCases[]` in the execution context
+before proceeding to Stage 3.
+
+**Exit code 0** — coverage already approved or no ACs found; continue to Stage 3.
+**Exit code 1** — script error; show the error and stop.
+
+---
+
 ## Stage 3 — Framework Discovery (DETERMINISTIC)
 
 ```bash
@@ -194,7 +227,7 @@ git push -u origin qa/<story-id-lower>
 
 ## Final report to user
 
-- Story tested and reviewer (if a test-design review was done)
+- Story tested and coverage reviewer name + coverage % from Stage 2b
 - Stage 4b: enriched or skipped (and why)
 - Pass / Fail / Total counts
 - Failing test titles and first error line

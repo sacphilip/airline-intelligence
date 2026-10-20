@@ -47,8 +47,13 @@ export function designTests(
     for (const p of endpoint.queryParams) {
       allParams[p.name] = ex[p.name] ?? 'test';
     }
+    const requiredBodyFields = (endpoint.bodyFields ?? []).filter(f => f.required);
+    const negReqId = requirements.requirements.find(r => r.type === 'negative')?.id ?? requirements.requirements[0].id;
+    const valReqId = requirements.requirements.find(r => r.type === 'validation' || r.type === 'negative')?.id ?? requirements.requirements[0].id;
+    const funcReqId = requirements.requirements.find(r => r.type === 'functional')?.id ?? requirements.requirements[0].id;
+    const schemaReqId = requirements.requirements.find(r => r.type === 'schema')?.id ?? requirements.requirements[0].id;
 
-    // Negative: one test per missing required param
+    // Negative: one test per missing required query param
     for (const param of requiredParams) {
       const params = { ...allParams };
       delete params[param.name];
@@ -60,13 +65,59 @@ export function designTests(
         method: endpoint.method,
         queryParams: params,
         expectedStatus: 400,
-        requirementId:
-          requirements.requirements.find(r => r.type === 'negative')?.id ??
-          requirements.requirements[0].id,
+        requirementId: negReqId,
       });
     }
 
-    // Validation: invalid value for params that have known format rules
+    // Negative: one test per missing required body field
+    for (const field of requiredBodyFields) {
+      testCases.push({
+        id: tc(),
+        name: `missing body field '${field.name}' returns 400`,
+        description: `Omitting required body field '${field.name}' must return HTTP 400`,
+        endpoint: endpoint.path,
+        method: endpoint.method,
+        expectedStatus: 400,
+        requirementId: negReqId,
+      });
+    }
+
+    // Negative: login-specific — wrong credentials return 401
+    if (endpoint.path.endsWith('/login') && endpoint.method === 'POST') {
+      testCases.push({
+        id: tc(),
+        name: `wrong credentials return 401`,
+        description: `Submitting an incorrect email/password must return HTTP 401`,
+        endpoint: endpoint.path,
+        method: endpoint.method,
+        expectedStatus: 401,
+        requirementId: negReqId,
+      });
+      // AC-05: response body must not expose password or secret fields
+      testCases.push({
+        id: tc(),
+        name: `login response must not expose password fields`,
+        description: `Successful login response body must not contain password, passwordHash, or any secret`,
+        endpoint: endpoint.path,
+        method: endpoint.method,
+        expectedStatus: 200,
+        forbiddenResponseFields: ['password', 'passwordHash', 'password_hash', 'secret'],
+        requirementId: funcReqId,
+      });
+      // AC-07: Set-Cookie header must have Max-Age for 30-day session
+      testCases.push({
+        id: tc(),
+        name: `Set-Cookie header includes Max-Age for 30-day session`,
+        description: `Login response Set-Cookie must include Max-Age=2592000 (30 days in seconds)`,
+        endpoint: endpoint.path,
+        method: endpoint.method,
+        expectedStatus: 200,
+        expectedResponseHeaders: { 'set-cookie': 'max-age=2592000' },
+        requirementId: funcReqId,
+      });
+    }
+
+    // Validation: invalid value for query params that have known format rules
     for (const param of endpoint.queryParams) {
       const invalidValue = invalidFor(param.name);
       if (!invalidValue) continue;
@@ -78,9 +129,7 @@ export function designTests(
         method: endpoint.method,
         queryParams: { ...allParams, [param.name]: invalidValue },
         expectedStatus: 400,
-        requirementId:
-          requirements.requirements.find(r => r.type === 'validation' || r.type === 'negative')
-            ?.id ?? requirements.requirements[0].id,
+        requirementId: valReqId,
       });
     }
 
@@ -93,26 +142,20 @@ export function designTests(
       method: endpoint.method,
       queryParams: requiredParams.length > 0 ? allParams : undefined,
       expectedStatus: 200,
-      requirementId:
-        requirements.requirements.find(r => r.type === 'functional')?.id ??
-        requirements.requirements[0].id,
+      requirementId: funcReqId,
     });
 
-    // Schema: response body structure
-    if (endpoint.queryParams.length > 0) {
-      testCases.push({
-        id: tc(),
-        name: `response is valid JSON`,
-        description: `${endpoint.method} ${endpoint.path} returns parseable JSON on success`,
-        endpoint: endpoint.path,
-        method: endpoint.method,
-        queryParams: requiredParams.length > 0 ? allParams : undefined,
-        expectedStatus: 200,
-        requirementId:
-          requirements.requirements.find(r => r.type === 'schema')?.id ??
-          requirements.requirements[0].id,
-      });
-    }
+    // Schema: response body structure (always — not gated on query params)
+    testCases.push({
+      id: tc(),
+      name: `response is valid JSON`,
+      description: `${endpoint.method} ${endpoint.path} returns parseable JSON on success`,
+      endpoint: endpoint.path,
+      method: endpoint.method,
+      queryParams: requiredParams.length > 0 ? allParams : undefined,
+      expectedStatus: 200,
+      requirementId: schemaReqId,
+    });
   }
 
   return { storyId: requirements.storyId, testCases };

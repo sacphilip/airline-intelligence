@@ -9,6 +9,10 @@ export interface TestCase {
   expectedStatus: number;
   expectedFields?: string[];
   expectedErrorMessage?: string;
+  /** Fields that must NOT appear in the response body (AC-05: no password leakage) */
+  forbiddenResponseFields?: string[];
+  /** Response headers that must be present and contain the given substring */
+  expectedResponseHeaders?: Record<string, string>;
   requirementId: string;
 }
 

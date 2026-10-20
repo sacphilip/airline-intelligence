@@ -5,7 +5,8 @@ export function analyzeRequirements(storyContent: string, storyId: string): Requ
   const title = lines.find(l => l.startsWith('# '))?.replace(/^#\s*/, '').trim() ?? storyId;
 
   const criteriaStart = lines.findIndex(l => /^##\s+acceptance criteria/i.test(l));
-  const criteriaEnd = lines.findIndex((l, i) => i > criteriaStart && /^##/.test(l));
+  // Use /^## [^#]/ so ### sub-headings inside the section don't truncate the slice
+  const criteriaEnd = lines.findIndex((l, i) => i > criteriaStart && /^## [^#]/.test(l));
   const criteriaLines = lines
     .slice(criteriaStart + 1, criteriaEnd === -1 ? undefined : criteriaEnd)
     .filter(l => /^\s*[-*]/.test(l));

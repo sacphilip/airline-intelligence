@@ -180,4 +180,76 @@ test.describe('US-011 — User Login', () => {
     resolveRequest();
   });
 
+  // AC-06: session persists across browser refresh
+  test('TC-011-14: Session persists across browser refresh', async ({ page }) => {
+    await mockFlightApis(page);
+    await page.route('**/api/auth/me', r => r.fulfill({ status: 200, json: ALICE }));
+    await page.goto('/');
+    await expect(page.getByText('Alice')).toBeVisible();
+    // Reload simulates a browser refresh — authMe is called again with the cookie
+    await page.reload();
+    await expect(page.getByText('Alice')).toBeVisible();
+    // HttpOnly cookies are not readable by JS — sid must not appear in document.cookie
+    const cookieStr: string = await page.evaluate(() => document.cookie);
+    expect(cookieStr).not.toMatch(/\bsid\b/);
+  });
+
+  // AC-08 (extended): after logout the session is gone server-side — next authMe returns null
+  test('TC-011-15: After logout, subsequent authMe returns null', async ({ page }) => {
+    await mockFlightApis(page);
+    let sessionActive = true;
+    await page.route('**/api/auth/me', r =>
+      r.fulfill({ status: 200, json: sessionActive ? ALICE : null })
+    );
+    await page.route('**/api/auth/logout', async r => {
+      sessionActive = false;
+      await r.fulfill({ status: 200, json: { ok: true } });
+    });
+    await page.goto('/');
+    await expect(page.getByText('Alice')).toBeVisible();
+    await page.getByRole('button', { name: 'Log out' }).click();
+    // Reload triggers authMe again — server-side session is gone
+    await page.reload();
+    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    await expect(page.getByText('Alice')).not.toBeVisible();
+  });
+
+  // AC-09: concurrent sessions — two browser contexts can each hold an active session
+  test('TC-011-16: Two independent browser contexts can each have an active session', async ({ browser }) => {
+    const ctx1 = await browser.newContext();
+    const ctx2 = await browser.newContext();
+    try {
+      const page1 = await ctx1.newPage();
+      const page2 = await ctx2.newPage();
+      for (const p of [page1, page2]) {
+        await mockFlightApis(p);
+        await p.route('**/api/auth/me', r => r.fulfill({ status: 200, json: ALICE }));
+      }
+      await page1.goto('/');
+      await page2.goto('/');
+      await expect(page1.getByText('Alice')).toBeVisible();
+      await expect(page2.getByText('Alice')).toBeVisible();
+    } finally {
+      await ctx1.close();
+      await ctx2.close();
+    }
+  });
+
+  // AC-12: unauthenticated users can access all read-only tabs
+  test('TC-011-17: Unauthenticated users can access all read-only tabs', async ({ page }) => {
+    await mockFlightApis(page);
+    await page.route('**/api/auth/me', r => r.fulfill({ status: 200, json: null }));
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    // All four tabs visible and clickable without login
+    const nav = page.locator('nav');
+    await expect(nav.getByRole('button', { name: /live map/i })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /find flight/i })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /delays/i })).toBeVisible();
+    await expect(nav.getByRole('button', { name: /airlines/i })).toBeVisible();
+    // Navigate to Find Flight — must work without login
+    await nav.getByRole('button', { name: /find flight/i }).click();
+    await expect(nav.getByRole('button', { name: /find flight/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
 });

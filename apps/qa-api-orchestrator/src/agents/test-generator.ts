@@ -51,6 +51,23 @@ function buildTestBody(tc: TestCase): string[] {
       lines.push(`      expect(body).toBeDefined();`);
       lines.push(`    }`);
     }
+
+    if (tc.forbiddenResponseFields && tc.forbiddenResponseFields.length > 0) {
+      lines.push(`    if (res.status() === 200) {`);
+      lines.push(`      const body = await res.json();`);
+      lines.push(`      const bodyStr = JSON.stringify(body).toLowerCase();`);
+      for (const field of tc.forbiddenResponseFields) {
+        lines.push(`      expect(bodyStr).not.toContain(${JSON.stringify(field.toLowerCase())});`);
+      }
+      lines.push(`    }`);
+    }
+
+    if (tc.expectedResponseHeaders && Object.keys(tc.expectedResponseHeaders).length > 0) {
+      for (const [header, valueSubstring] of Object.entries(tc.expectedResponseHeaders)) {
+        lines.push(`    const ${header.replace(/[^a-z0-9]/gi, '_')}Header = res.headers()[${JSON.stringify(header.toLowerCase())}] ?? '';`);
+        lines.push(`    expect(${header.replace(/[^a-z0-9]/gi, '_')}Header.toLowerCase()).toContain(${JSON.stringify(valueSubstring.toLowerCase())});`);
+      }
+    }
   }
 
   return lines;

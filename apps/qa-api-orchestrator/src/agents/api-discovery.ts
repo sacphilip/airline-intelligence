@@ -1,5 +1,5 @@
 import { RequirementAnalysis } from '../schemas/requirements';
-import { ApiContract, ApiEndpoint, QueryParam } from '../schemas/api-contract';
+import { ApiContract, ApiEndpoint, BodyField, QueryParam } from '../schemas/api-contract';
 
 export function discoverApi(
   requirements: RequirementAnalysis,
@@ -39,11 +39,25 @@ export function discoverApi(
           description: p['description'] as string | undefined,
         }));
 
+      // Extract required fields from request body schema
+      const requestBody = operation['requestBody'] as Record<string, unknown> | undefined;
+      const bodySchema = (
+        ((requestBody?.['content'] as Record<string, unknown>)?.['application/json'] as Record<string, unknown>)?.['schema'] as Record<string, unknown>
+      ) ?? {};
+      const bodyRequired = new Set<string>((bodySchema['required'] as string[] | undefined) ?? []);
+      const bodyProperties = (bodySchema['properties'] as Record<string, Record<string, unknown>>) ?? {};
+      const bodyFields: BodyField[] = Object.entries(bodyProperties).map(([name, prop]) => ({
+        name,
+        required: bodyRequired.has(name),
+        type: (prop['type'] as string) ?? 'string',
+      }));
+
       endpoints.push({
         method: method.toUpperCase(),
         path,
         summary: (operation['summary'] as string) ?? `${method.toUpperCase()} ${path}`,
         queryParams,
+        bodyFields,
         responseDescription: '200 JSON response',
         requirementIds: requirements.requirements.map(r => r.id),
       });
