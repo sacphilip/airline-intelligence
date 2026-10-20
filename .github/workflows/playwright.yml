@@ -30,7 +30,7 @@ jobs:
       env:
         CI: 'true'
     - uses: actions/upload-artifact@v6
-      if: ${{ !cancelled() }}
+      if: always()
       with:
         name: smoke-report
         path: smoke-report/
@@ -87,7 +87,7 @@ jobs:
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
     - uses: actions/upload-artifact@v6
-      if: ${{ !cancelled() }}
+      if: always()
       with:
         name: playwright-report
         path: playwright-report/
@@ -171,7 +171,7 @@ jobs:
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
     - uses: actions/upload-artifact@v6
-      if: steps.changed.outputs.files != '' && !cancelled()
+      if: steps.changed.outputs.files != '' && always()
       with:
         name: feature-api-report
         path: playwright-report/
