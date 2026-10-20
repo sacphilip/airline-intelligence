@@ -1,0 +1,28 @@
+{
+  "servers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "playwright-test": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "playwright",
+        "run-test-mcp-server"
+      ]
+    },
+    "qa": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${workspaceFolder}/packages/qa-orchestrator-mcp/dist/index.js"
+      ],
+      "cwd": "${workspaceFolder}"
+    }
+  },
+  "inputs": []
+}

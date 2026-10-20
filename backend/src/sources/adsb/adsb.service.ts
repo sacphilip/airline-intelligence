@@ -106,8 +106,8 @@ export class AdsbService {
   async aircraftNear(lat: number, lon: number, dist: number) {
     const grid = dist <= 40 ? 0.1 : 0.5;
     const pad = grid === 0.1 ? 5 : 25;
-    const RADIUS_STEPS = [10, 25, 50, 100, 150, 200, 250];
-    const radius = RADIUS_STEPS.find(s => s >= dist + pad) ?? 250;
+    const RADIUS_STEPS = [10, 25, 50, 100, 150, 200, 250, 350, 500];
+    const radius = RADIUS_STEPS.find(s => s >= dist + pad) ?? 500;
     const snap = (v: number) => (Math.round(v / grid) * grid).toFixed(1);
     const data = await this.fetchThrottled(`${API}/point/${snap(lat)}/${snap(lon)}/${radius}`);
     return {
@@ -138,7 +138,7 @@ export class AdsbService {
       const ac = (data.ac ?? []).find((a: any) => typeof a.lat === 'number' && typeof a.lon === 'number');
       return { aircraft: ac ? this.normalizeAircraft(ac) : null };
     } catch (err: any) {
-      return { error: err instanceof RateLimitedError ? 'adsb.lol is rate-limiting requests' : err.message };
+      return { aircraft: null, error: err instanceof RateLimitedError ? 'adsb.lol is rate-limiting requests' : err.message };
     }
   }
 

@@ -7,6 +7,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { redisStore } from 'cache-manager-ioredis-yet';
 
 import { Movement } from './movement/movement.entity';
+import { User } from './auth/user.entity';
+import { AuthModule } from './auth/auth.module';
 import { MovementModule } from './movement/movement.module';
 import { AdsbModule } from './sources/adsb/adsb.module';
 import { AeroDataBoxModule } from './sources/aerodatabox/aerodatabox.module';
@@ -31,7 +33,7 @@ import { PredictionModule } from './prediction/prediction.module';
       useFactory: (cfg: ConfigService) => ({
         type: 'postgres',
         url: cfg.get('DATABASE_URL', 'postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker'),
-        entities: [Movement],
+        entities: [Movement, User],
         synchronize: true, // use migrations in production
         logging: cfg.get('DB_LOGGING') === 'true',
       }),
@@ -42,10 +44,8 @@ import { PredictionModule } from './prediction/prediction.module';
       inject: [ConfigService],
       useFactory: async (cfg: ConfigService) => ({
         store: await redisStore({
-          socket: {
-            host: cfg.get('REDIS_HOST', 'localhost'),
-            port: Number(cfg.get('REDIS_PORT', 6379)),
-          },
+          host: cfg.get('REDIS_HOST', 'localhost'),
+          port: Number(cfg.get('REDIS_PORT', 6379)),
         }),
       }),
     }),
@@ -62,6 +62,7 @@ import { PredictionModule } from './prediction/prediction.module';
 
     EventEmitterModule.forRoot(),
 
+    AuthModule,
     MovementModule,
     AdsbModule,
     AeroDataBoxModule,

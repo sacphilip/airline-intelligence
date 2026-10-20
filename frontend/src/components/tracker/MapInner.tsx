@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { LiveAircraft } from '@/lib/types';
 import { fmt } from '@/lib/format';
 
@@ -39,20 +38,34 @@ interface Props {
   aircraft: LiveAircraft[];
   selectedHex: string | null;
   center: [number, number];
+  isActive: boolean;
   onSelect: (hex: string) => void;
   onMoveEnd: (center: [number, number], dist: number) => void;
 }
 
-function AircraftLayer({ aircraft, selectedHex, onSelect, onMoveEnd }: Omit<Props, 'center'>) {
+function AircraftLayer({ aircraft, selectedHex, onSelect, onMoveEnd, isActive }: Omit<Props, 'center'>) {
   const map = useMap();
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
+
+  // Force resize on mount and whenever the tab becomes visible
+  useEffect(() => {
+    const id = setTimeout(() => map.invalidateSize(), 100);
+    return () => clearTimeout(id);
+  }, [map]);
+
+  useEffect(() => {
+    if (isActive) {
+      const id = setTimeout(() => map.invalidateSize(), 50);
+      return () => clearTimeout(id);
+    }
+  }, [map, isActive]);
 
   useMapEvents({
     moveend: () => {
       const c = map.getCenter();
       const bounds = map.getBounds();
       const dist = c.distanceTo(bounds.getNorthEast()) / 1852; // metres → NM
-      onMoveEnd([c.lat, c.lng], Math.min(250, Math.ceil(dist)));
+      onMoveEnd([c.lat, c.lng], Math.min(500, Math.ceil(dist)));
     },
   });
 
@@ -85,14 +98,14 @@ function AircraftLayer({ aircraft, selectedHex, onSelect, onMoveEnd }: Omit<Prop
   return null;
 }
 
-export default function MapInner({ aircraft, selectedHex, center, onSelect, onMoveEnd }: Props) {
+export default function MapInner({ aircraft, selectedHex, center, isActive, onSelect, onMoveEnd }: Props) {
   return (
     <MapContainer center={center} zoom={6} style={{ height: '100%', width: '100%' }}>
       <TileLayer
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       />
-      <AircraftLayer aircraft={aircraft} selectedHex={selectedHex} onSelect={onSelect} onMoveEnd={onMoveEnd} />
+      <AircraftLayer aircraft={aircraft} selectedHex={selectedHex} isActive={isActive} onSelect={onSelect} onMoveEnd={onMoveEnd} />
     </MapContainer>
   );
 }

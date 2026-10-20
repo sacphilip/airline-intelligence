@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "qa": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "packages/qa-orchestrator-mcp/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}

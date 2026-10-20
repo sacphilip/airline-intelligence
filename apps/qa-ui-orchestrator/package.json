@@ -1,0 +1,19 @@
+{
+  "name": "qa-ui-orchestrator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hybrid UI QA orchestrator — deterministic scripts + Playwright MCP for enrichment",
+  "scripts": {
+    "analyze":  "tsx scripts/requirement-analyzer.ts",
+    "scan":     "tsx scripts/framework-scanner.ts",
+    "generate": "tsx scripts/ui-test-generator.ts",
+    "classify": "tsx scripts/failure-analyzer.ts",
+    "heal":     "tsx scripts/test-healer.ts",
+    "report":   "tsx scripts/report-generator.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

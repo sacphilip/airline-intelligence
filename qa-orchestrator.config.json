@@ -1,0 +1,22 @@
+{
+  "storiesDir": "user-stories",
+  "outputDir": ".qa-orchestrator",
+  "api": {
+    "baseUrl": "http://localhost:3100",
+    "testsDir": "apps/qa-api-orchestrator/tests/generated",
+    "examples": {
+      "number": "6E5321",
+      "from": "BLR",
+      "to": "DEL",
+      "iata": "6E",
+      "airport": "DEL"
+    }
+  },
+  "ui": {
+    "baseUrl": "http://localhost:3000",
+    "specsDir": "tests/specs",
+    "pagesDir": "tests/pages",
+    "fixturesFile": "tests/fixtures/test.fixture.ts",
+    "dataDir": "tests/data"
+  }
+}

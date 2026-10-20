@@ -6,3 +6,13 @@ dist/
 *.db-shm
 *.db-wal
 weather_history.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# QA orchestrator state, review packets and reports
+.qa-orchestrator/

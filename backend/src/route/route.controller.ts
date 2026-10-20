@@ -32,6 +32,16 @@ export class RouteController {
     return result;
   }
 
+  // US-009: route reliability overall and per airline, from recorded history (works without an AeroDataBox key).
+  @Get('route/analytics')
+  async routeAnalytics(@Query('from') from: string, @Query('to') to: string) {
+    const msg = 'Enter 3-letter IATA or 4-letter ICAO codes for both airports, e.g. BLR and DEL';
+    const fromCode = airportParam(from, msg);
+    const toCode = airportParam(to, msg);
+    if (fromCode === toCode) throw new BadRequestException('Departure and arrival airports must be different');
+    return this.routeService.routeAnalytics(fromCode, toCode);
+  }
+
   @Get('route')
   async route(@Query('from') from: string, @Query('to') to: string, @Query('date') date: string) {
     const msg = 'Enter 3-letter IATA or 4-letter ICAO codes for both airports, e.g. BLR and DEL';

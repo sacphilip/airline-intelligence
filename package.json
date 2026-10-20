@@ -1,13 +1,28 @@
 {
   "name": "flight-tracker",
   "version": "1.0.0",
-  "description": "Live flight tracking map using the adsb.lol open data API",
-  "type": "module",
+  "description": "Live flight tracking map with scheduled times, delay predictions and airport boards.",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test \"test/*.test.js\""
+    "test": "playwright test tests/specs/",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
+    "test:nav": "playwright test tests/specs/app-navigation.spec.ts",
+    "test:us001": "playwright test tests/specs/us-001-search-by-flight-number.spec.ts",
+    "test:us002": "playwright test tests/specs/us-002-search-by-route.spec.ts",
+    "test:us003": "playwright test tests/specs/us-003-flight-card.spec.ts",
+    "test:us005": "playwright test tests/specs/us-005-flight-history.spec.ts",
+    "test:us006": "playwright test tests/specs/us-006-airline-profile.spec.ts",
+    "test:us009": "playwright test tests/specs/us-009-route-analytics.spec.ts",
+    "qa": "cd apps/qa-api-orchestrator && npm run qa --",
+    "orchestrator:build": "npm ci --prefix packages/qa-orchestrator-mcp",
+    "orchestrator:init": "node packages/qa-orchestrator-mcp/dist/index.js init"
   },
-  "engines": {
-    "node": ">=22.13"
+  "keywords": [],
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.4"
   }
 }

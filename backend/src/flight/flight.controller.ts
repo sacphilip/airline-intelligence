@@ -1,4 +1,4 @@
-import { Controller, Get, Query, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { FlightService } from './flight.service';
 import { AdsbService, RateLimitedError } from '../sources/adsb/adsb.service';
 
@@ -20,6 +20,16 @@ export class FlightController {
     if (!Number.isFinite(lon) || lon < -180 || lon > 180) throw new BadRequestException('lon must be a valid number');
     if (!Number.isFinite(dist) || dist < 1 || dist > 100_000) throw new BadRequestException('dist must be a valid number');
     return this.adsb.aircraftNear(lat, lon, dist);
+  }
+
+  @Get('flight/history')
+  async flightHistory(
+    @Query('number') number: string,
+    @Query('days') daysRaw?: string,
+  ) {
+    if (!number?.trim()) throw new BadRequestException('number is required');
+    const days = Math.min(14, Math.max(1, Number(daysRaw) || 7));
+    return this.flightService.flightHistory(number.trim(), days);
   }
 
   @Get('flight')

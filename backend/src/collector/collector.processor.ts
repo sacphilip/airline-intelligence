@@ -47,7 +47,7 @@ export class CollectorProcessor implements OnModuleInit {
   async handleCollect(job: Job<{ airports: string[] }>) {
     for (const code of job.data.airports) {
       try {
-        const { flights } = await this.airportService.fetchBoard(code, { offsetMinutes: -720, durationMinutes: 720 });
+        const flights = await this.airportService.fetchBoard(code, { offsetMinutes: -720, durationMinutes: 720 });
         this.logger.log(`history: recorded ${flights.length} movements at ${code}`);
       } catch (err: any) {
         this.logger.warn(`history: ${code} failed: ${err.message}`);

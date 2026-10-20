@@ -1,0 +1,35 @@
+{
+  "name": "qa-api-orchestrator",
+  "version": "1.0.0",
+  "description": "AI-powered QA API orchestrator — generates and heals Playwright API tests from user stories",
+  "bin": {
+    "qa-orchestrate": "./dist/src/cli.js"
+  },
+  "main": "./dist/src/orchestrator/qa-api-orchestrator.js",
+  "types": "./dist/src/orchestrator/qa-api-orchestrator.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "qa": "tsx src/cli.ts",
+    "ci-heal": "tsx src/ci-healer.ts",
+    "mock": "tsx src/mock-server.ts",
+    "test": "playwright test",
+    "report": "playwright show-report reports/playwright"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.37.0",
+    "@playwright/test": "^1.49.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
