@@ -1,6 +1,6 @@
-﻿name: Smoke Tests
+name: Smoke Tests
 
-# Pre-merge gate â€” runs on every PR targeting develop.
+# Pre-merge gate — runs on every PR targeting develop.
 # BOTH jobs must pass for the merge to be allowed.
 # Set as required status checks in branch protection:
 #   "Smoke Tests / UI Smoke"
@@ -16,12 +16,12 @@ concurrency:
 permissions:
   contents: read
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Job 1 â€” UI Smoke
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 — UI Smoke
 # Starts only the Next.js frontend (no backend, no database).
 # All API calls are intercepted by page.route() mocks inside the spec.
 # Runs after every merge to develop. Should complete in < 3 minutes.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
   smoke-ui:
     name: UI Smoke
@@ -63,13 +63,13 @@ jobs:
           path: smoke-report/
           retention-days: 7
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Job 2 â€” API Smoke
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 — API Smoke
 # Starts the NestJS backend against a fresh, empty Postgres.
 # Tests cover health, 400 validation errors, and empty-state 200s.
-# No AERODATABOX_KEY needed â€” no live data fetched.
+# No AERODATABOX_KEY needed — no live data fetched.
 # Should complete in < 5 minutes.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
   smoke-api:
     name: API Smoke
     runs-on: ubuntu-latest
@@ -133,7 +133,7 @@ jobs:
           DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-          # Disable background collectors â€” no API key needed, no quota used
+          # Disable background collectors — no API key needed, no quota used
           COLLECT_AIRPORTS: ''
 
       - name: Wait for backend to be ready
@@ -142,7 +142,7 @@ jobs:
             if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
               echo "Backend ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/30 â€” retrying in 2 s"; sleep 2
+            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
           done
           echo "ERROR: backend did not become ready within 60 s"; exit 1
 

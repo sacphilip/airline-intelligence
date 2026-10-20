@@ -1,4 +1,4 @@
-﻿name: QA Tests
+name: QA Tests
 
 on:
   workflow_dispatch:
@@ -20,13 +20,13 @@ concurrency:
 permissions:
   contents: read
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Job A â€” UI Automation
+# ─────────────────────────────────────────────────────────────────────────────
+# Job A — UI Automation
 # Tests run against the real NestJS backend and live flight data: nothing is
-# mocked. Playwright (playwright.config.ts â†’ webServer) builds and starts the
+# mocked. Playwright (playwright.config.ts → webServer) builds and starts the
 # backend and the Next.js dev server; Postgres and Redis run as services.
-# Each run makes real AeroDataBox calls (roughly 6â€“8 units with an empty cache).
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Each run makes real AeroDataBox calls (roughly 6–8 units with an empty cache).
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
   ui-tests:
     name: UI Automation
@@ -121,14 +121,14 @@ jobs:
           path: test-results/
           retention-days: 7
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Job B â€” API Automation
-# Runs committed Playwright API spec files directly â€” no test generation.
+# ─────────────────────────────────────────────────────────────────────────────
+# Job B — API Automation
+# Runs committed Playwright API spec files directly — no test generation.
 # Stories touched by this PR run first (priority steps, individually visible
 # in the GitHub UI); remaining committed specs run in one batch after.
 # To add or update test specs: run /qa-orchestrator-ui <story-id> locally
 # and commit the generated file from apps/qa-api-orchestrator/tests/generated/.
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
   api-tests:
     name: API Automation
     runs-on: ubuntu-latest
@@ -210,7 +210,7 @@ jobs:
             if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
               echo "Backend ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/30 â€” retrying in 2 s"; sleep 2
+            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
           done
           echo "ERROR: backend did not become ready within 60 s"; exit 1
 
@@ -223,11 +223,11 @@ jobs:
             if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
               echo "Mock server ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/15 â€” retrying in 1 s"; sleep 1
+            echo "  attempt $i/15 — retrying in 1 s"; sleep 1
           done
           echo "ERROR: mock server did not become ready within 15 s"; exit 1
 
-      # â”€â”€ Detect which user stories this PR touches â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # ── Detect which user stories this PR touches ───────────────────────────
       - name: Detect changed user stories
         id: changed
         run: |
@@ -250,13 +250,13 @@ jobs:
             if [ -f "$spec" ]; then
               PRIORITY_SPECS="${PRIORITY_SPECS} ${spec}"
             else
-              echo "::notice::No committed spec for ${s^^} â€” run /qa-orchestrator-ui ${s^^} locally to generate one"
+              echo "::notice::No committed spec for ${s^^} — run /qa-orchestrator-ui ${s^^} locally to generate one"
             fi
           done
           echo "priority_specs=${PRIORITY_SPECS}" >> $GITHUB_OUTPUT
 
-      # â”€â”€ Priority: run changed-story specs first (early feedback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      - name: API â€” priority specs (stories changed in this PR)
+      # ── Priority: run changed-story specs first (early feedback) ──────────────
+      - name: API — priority specs (stories changed in this PR)
         if: steps.changed.outputs.priority_specs != ''
         continue-on-error: true
         working-directory: apps/qa-api-orchestrator
@@ -269,8 +269,8 @@ jobs:
         env:
           API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
 
-      # â”€â”€ Full suite: run all committed specs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      - name: API â€” full suite (initial)
+      # ── Full suite: run all committed specs ─────────────────────────────────
+      - name: API — full suite (initial)
         id: run_full
         working-directory: apps/qa-api-orchestrator
         run: |
@@ -288,7 +288,7 @@ jobs:
         env:
           API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
 
-      # â”€â”€ Healing stage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      # ── Healing stage ────────────────────────────────────────────────────────
       - name: Analyse and heal failures
         id: heal
         if: steps.run_full.outputs.status == 'fail'
@@ -320,16 +320,16 @@ jobs:
           path: apps/qa-api-orchestrator/reports/
           retention-days: 14
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Job C â€” Notify
+# ─────────────────────────────────────────────────────────────────────────────
+# Job C — Notify
 # Sends an email to sacphilip@gmail.com after the full regression run.
 # Fires whether the suite passed or failed (if: always()).
 #
-# Required secrets (Settings â†’ Secrets â†’ Actions):
-#   NOTIFY_GMAIL_USER        â€” Gmail address used to send (e.g. cibot@gmail.com)
-#   NOTIFY_GMAIL_APP_PASSWORD â€” Gmail App Password (not the account password)
+# Required secrets (Settings → Secrets → Actions):
+#   NOTIFY_GMAIL_USER        — Gmail address used to send (e.g. cibot@gmail.com)
+#   NOTIFY_GMAIL_APP_PASSWORD — Gmail App Password (not the account password)
 #                               Create one at myaccount.google.com/apppasswords
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────────────────────────────────────────────────────
   notify:
     name: Notify Results
     runs-on: ubuntu-latest
@@ -343,10 +343,10 @@ jobs:
           UI="${{ needs.ui-tests.result }}"
           API="${{ needs.api-tests.result }}"
           if [ "$UI" = "success" ] && [ "$API" = "success" ]; then
-            echo "icon=âœ…"    >> $GITHUB_OUTPUT
+            echo "icon=✅"    >> $GITHUB_OUTPUT
             echo "label=PASSED" >> $GITHUB_OUTPUT
           else
-            echo "icon=âŒ"    >> $GITHUB_OUTPUT
+            echo "icon=❌"    >> $GITHUB_OUTPUT
             echo "label=FAILED" >> $GITHUB_OUTPUT
           fi
 
@@ -362,7 +362,7 @@ jobs:
           from: Flight Tracker CI <${{ secrets.NOTIFY_GMAIL_USER }}>
           subject: >-
             ${{ steps.status.outputs.icon }} Regression ${{ steps.status.outputs.label }}
-            â€” ${{ github.repository }} @ ${{ github.ref_name }}
+            — ${{ github.repository }} @ ${{ github.ref_name }}
           html_body: |
             <h2>${{ steps.status.outputs.icon }} Regression suite ${{ steps.status.outputs.label }}</h2>
             <table cellpadding="6" style="border-collapse:collapse;font-family:monospace">
@@ -395,14 +395,14 @@ jobs:
               </tr>
               <tr>
                 <td>UI Automation</td>
-                <td>${{ needs.ui-tests.result == 'success' && 'âœ… passed' || 'âŒ ' }}${{ needs.ui-tests.result }}</td>
+                <td>${{ needs.ui-tests.result == 'success' && '✅ passed' || '❌ ' }}${{ needs.ui-tests.result }}</td>
               </tr>
               <tr>
                 <td>API Automation</td>
-                <td>${{ needs.api-tests.result == 'success' && 'âœ… passed' || 'âŒ ' }}${{ needs.api-tests.result }}</td>
+                <td>${{ needs.api-tests.result == 'success' && '✅ passed' || '❌ ' }}${{ needs.api-tests.result }}</td>
               </tr>
             </table>
             <br>
             <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">
-              View full run in GitHub Actions â†’
+              View full run in GitHub Actions →
             </a>

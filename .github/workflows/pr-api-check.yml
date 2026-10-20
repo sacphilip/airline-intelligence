@@ -1,9 +1,9 @@
-﻿name: PR â€” Story API Tests
+name: PR — Story API Tests
 
 # Runs on every PR targeting develop.
 # Finds user stories changed in this PR, runs their committed spec file.
-# This is the required status check for PR merge â€” set in branch protection:
-#   "PR â€” Story API Tests / story-api-tests"
+# This is the required status check for PR merge — set in branch protection:
+#   "PR — Story API Tests / story-api-tests"
 #
 # If a changed story has no committed spec, a notice is posted and the job
 # passes (the developer should run /qa-orchestrator-ui <story-id> locally
@@ -107,7 +107,7 @@ jobs:
             if curl -sf http://localhost:3100/health > /dev/null 2>&1; then
               echo "Backend ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/30 â€” retrying in 2 s"; sleep 2
+            echo "  attempt $i/30 — retrying in 2 s"; sleep 2
           done
           echo "ERROR: backend did not become ready within 60 s"; exit 1
 
@@ -120,7 +120,7 @@ jobs:
             if curl -sf http://localhost:3199/health > /dev/null 2>&1; then
               echo "Mock server ready after ${i} attempts"; exit 0
             fi
-            echo "  attempt $i/15 â€” retrying in 1 s"; sleep 1
+            echo "  attempt $i/15 — retrying in 1 s"; sleep 1
           done
           echo "ERROR: mock server did not become ready within 15 s"; exit 1
 
@@ -143,7 +143,7 @@ jobs:
             spec="${SPEC_DIR}/${s}.spec.ts"
             if [ -f "$spec" ]; then
               SPEC_LIST="${SPEC_LIST} ${spec}"
-              echo "  âœ… Found spec: $spec"
+              echo "  ✅ Found spec: $spec"
             else
               MISSING="${MISSING} ${s^^}"
               echo "::notice title=Missing spec for ${s^^}::No committed spec found for ${s^^}. Run '/qa-orchestrator-ui ${s^^}' locally and commit the generated file to include it in CI."
@@ -154,7 +154,7 @@ jobs:
           echo "missing=${MISSING}"     >> $GITHUB_OUTPUT
 
           if [ -z "$STORIES" ]; then
-            echo "::notice::No user story changes detected in this PR â€” skipping API spec run."
+            echo "::notice::No user story changes detected in this PR — skipping API spec run."
           fi
 
       - name: Run story specs (initial)
