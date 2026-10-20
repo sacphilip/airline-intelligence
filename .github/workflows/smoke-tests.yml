@@ -26,7 +26,11 @@ jobs:
   smoke-ui:
     name: UI Smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    # pull-requests: write lets the locator healer comment on the PR.
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -51,9 +55,32 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run UI smoke tests
-        run: npx playwright test --config playwright.smoke.config.ts
+        id: smoke
+        continue-on-error: true
+        run: npx playwright test --config playwright.smoke.config.ts --reporter=list,json,html
         env:
           CI: 'true'
+          PLAYWRIGHT_JSON_OUTPUT_NAME: smoke-results.json  # outside smoke-report/: the HTML reporter empties that folder
+          PLAYWRIGHT_HTML_OUTPUT_DIR: smoke-report
+          PLAYWRIGHT_HTML_OPEN: never
+
+      # Locator drift: fix the locator, re-run the failed tests, and suggest the fix on the PR.
+      # Deterministic first; Claude only for what that can't place (skipped without the secret).
+      - name: Heal drifted locators
+        id: heal
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then npm install --no-save @anthropic-ai/sdk; fi
+          node scripts/ci/heal-locators.cjs --report smoke-results.json --config playwright.smoke.config.ts --claude
+        env:
+          CI: 'true'
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Post healing result on the PR
+        if: always() && steps.heal.outcome != 'skipped' && github.event_name == 'pull_request'
+        run: node scripts/ci/post-heal-comment.cjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload smoke report
         uses: actions/upload-artifact@v6
@@ -62,6 +89,21 @@ jobs:
           name: smoke-ui-report
           path: smoke-report/
           retention-days: 7
+
+      - name: Upload healed locators
+        if: always() && steps.heal.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: healed-locators
+          path: heal-report/
+          retention-days: 14
+
+      # The check passes only if the smoke tests passed, or every failure was healed and passed on re-run.
+      - name: Smoke result
+        if: steps.smoke.outcome == 'failure' && steps.heal.outcome != 'success'
+        run: |
+          echo "::error::UI smoke tests failed and not every failure could be healed — see the PR comment or job summary."
+          exit 1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 2 — API Smoke

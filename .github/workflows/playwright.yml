@@ -12,8 +12,12 @@ jobs:
     if: >
       github.event_name == 'pull_request' &&
       startsWith(github.head_ref, 'qa/')
-    timeout-minutes: 15
+    timeout-minutes: 20
     runs-on: ubuntu-latest
+    # pull-requests: write lets the locator healer comment on the PR.
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
     - uses: actions/checkout@v6
     - uses: actions/setup-node@v6
@@ -26,15 +30,47 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps chromium
     - name: Run smoke tests
-      run: npx playwright test --config playwright.smoke.config.ts
+      id: smoke
+      continue-on-error: true
+      run: npx playwright test --config playwright.smoke.config.ts --reporter=list,json,html
       env:
         CI: 'true'
+        PLAYWRIGHT_JSON_OUTPUT_NAME: smoke-results.json  # outside smoke-report/: the HTML reporter empties that folder
+        PLAYWRIGHT_HTML_OUTPUT_DIR: smoke-report
+        PLAYWRIGHT_HTML_OPEN: never
+    # Locator drift: fix the locator, re-run the failed tests, and suggest the fix on the PR.
+    - name: Heal drifted locators
+      id: heal
+      if: steps.smoke.outcome == 'failure'
+      run: |
+        if [ -n "$ANTHROPIC_API_KEY" ]; then npm install --no-save @anthropic-ai/sdk; fi
+        node scripts/ci/heal-locators.cjs --report smoke-results.json --config playwright.smoke.config.ts --claude
+      env:
+        CI: 'true'
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    - name: Post healing result on the PR
+      if: always() && steps.heal.outcome != 'skipped'
+      run: node scripts/ci/post-heal-comment.cjs
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
     - uses: actions/upload-artifact@v6
       if: always()
       with:
         name: smoke-report
         path: smoke-report/
         retention-days: 7
+    - name: Upload healed locators
+      if: always() && steps.heal.outcome != 'skipped'
+      uses: actions/upload-artifact@v6
+      with:
+        name: healed-locators
+        path: heal-report/
+        retention-days: 14
+    - name: Smoke result
+      if: steps.smoke.outcome == 'failure' && steps.heal.outcome != 'success'
+      run: |
+        echo "::error::Smoke tests failed and not every failure could be healed — see the PR comment or job summary."
+        exit 1
 
   # PRs from feature/dev branches to develop: full suite against real backend
   test-pr:
@@ -127,22 +163,22 @@ jobs:
         COMMIT_MSG: ${{ github.event.head_commit.message }}
       run: |
         # Merge commit message contains the PR branch, e.g.:
-        #   “Merge pull request #N from user/feature/us-011-user-login”
+        #   "Merge pull request #N from user/feature/us-011-user-login"
         # Extract the first us-NNN pattern (case-insensitive).
-        story=$(echo “$COMMIT_MSG” | grep -oiP 'us-\d+' | head -1 | tr '[:upper:]' '[:lower:]')
-        if [ -n “$story” ]; then
-          echo “Detected user story: $story”
-          files=$(find tests/specs -name “${story}-*.spec.ts” 2>/dev/null | tr '\n' ' ')
+        story=$(echo "$COMMIT_MSG" | grep -oiP 'us-\d+' | head -1 | tr '[:upper:]' '[:lower:]')
+        if [ -n "$story" ]; then
+          echo "Detected user story: $story"
+          files=$(find tests/specs -name "${story}-*.spec.ts" 2>/dev/null | tr '\n' ' ')
         fi
         # Fallback: if no story ID found in message, check for any spec changes in the merge
-        if [ -z “$files” ]; then
+        if [ -z "$files" ]; then
           files=$(git diff HEAD~1 --name-only -- 'tests/specs/us-*.spec.ts' | tr '\n' ' ')
         fi
-        echo “files=$files” >> $GITHUB_OUTPUT
-        if [ -n “$files” ]; then
-          echo “Running specs: $files”
+        echo "files=$files" >> $GITHUB_OUTPUT
+        if [ -n "$files" ]; then
+          echo "Running specs: $files"
         else
-          echo “No user-story specs found — skipping”
+          echo "No user-story specs found — skipping"
         fi
     - name: Check AeroDataBox key
       if: steps.changed.outputs.files != ''
