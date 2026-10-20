@@ -94,9 +94,9 @@ jobs:
         path: playwright-report/
         retention-days: 30
 
-  # Post-merge to main: run only the spec files that changed in the merge commit
+  # Post-merge to main: run only the user-story API specs that landed in this merge
   test-post-merge:
-    name: Feature Tests (post-merge)
+    name: Feature API Tests (post-merge)
     if: github.event_name == 'push'
     timeout-minutes: 60
     runs-on: ubuntu-latest
@@ -122,35 +122,34 @@ jobs:
     - uses: actions/setup-node@v6
       with:
         node-version: '24'
+    - name: Detect user-story spec files added or changed in this merge
+      id: changed
+      run: |
+        files=$(git diff HEAD~1 --name-only -- 'tests/specs/us-*.spec.ts' | tr '\n' ' ')
+        echo "files=$files" >> $GITHUB_OUTPUT
+        if [ -n "$files" ]; then
+          echo "Running specs: $files"
+        else
+          echo "No user-story specs changed — skipping"
+        fi
     - name: Check AeroDataBox key
+      if: steps.changed.outputs.files != ''
       run: |
         [ -n "$AERODATABOX_KEY" ] || { echo "::error::AERODATABOX_KEY secret is not set"; exit 1; }
       env:
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
-    - name: Detect changed spec files
-      id: changed
-      run: |
-        files=$(git diff HEAD~1 --name-only -- 'tests/specs/*.spec.ts' | tr '\n' ' ')
-        echo "files=$files" >> $GITHUB_OUTPUT
-        if [ -n "$files" ]; then
-          echo "Found changed specs: $files"
-        else
-          echo "No spec files changed — will run full suite"
-        fi
     - name: Install dependencies
+      if: steps.changed.outputs.files != ''
       run: |
         npm ci
         npm ci --prefix backend
         npm ci --prefix frontend
     - name: Install Playwright Browsers
+      if: steps.changed.outputs.files != ''
       run: npx playwright install --with-deps
-    - name: Run feature tests
-      run: |
-        if [ -n "${{ steps.changed.outputs.files }}" ]; then
-          npx playwright test ${{ steps.changed.outputs.files }}
-        else
-          npx playwright test
-        fi
+    - name: Run user-story API tests against real backend
+      if: steps.changed.outputs.files != ''
+      run: npx playwright test ${{ steps.changed.outputs.files }}
       env:
         CI: 'true'
         DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
@@ -160,8 +159,8 @@ jobs:
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
     - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
+      if: steps.changed.outputs.files != '' && !cancelled()
       with:
-        name: playwright-report
+        name: feature-api-report
         path: playwright-report/
         retention-days: 30
