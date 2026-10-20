@@ -79,7 +79,7 @@ export default function Home() {
                   {currentUser.firstName ?? currentUser.email?.split('@')[0]}
                 </span>
                 <button
-                  onClick={async () => { await api.authLogout(); setCurrentUser(null); }}
+                  onClick={async () => { await api.authLogout(); location.href = '/login'; }}
                   className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition"
                 >
                   Log out

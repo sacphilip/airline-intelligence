@@ -110,15 +110,17 @@ test.describe('US-011 — User Login', () => {
     await expect(page.getByRole('link', { name: 'Log in' })).not.toBeVisible();
   });
 
-  test('TC-011-09: Clicking Log out calls logout endpoint and nav reverts to Log in', async ({ page }) => {
+  test('TC-011-09: Clicking Log out redirects to login page', async ({ page }) => {
     await mockFlightApis(page);
     await page.route('**/api/auth/me',     r => r.fulfill({ status: 200, json: ALICE }));
     await page.route('**/api/auth/logout', r => r.fulfill({ status: 200, json: { ok: true } }));
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Log out' })).toBeVisible();
-    await page.getByRole('button', { name: 'Log out' }).click();
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
-    await expect(page.getByText('Alice')).not.toBeVisible();
+    await Promise.all([
+      page.waitForURL('**/login'),
+      page.getByRole('button', { name: 'Log out' }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/login/);
   });
 
   test('TC-011-10: Submitting with empty password shows error and does not call API', async ({ page }) => {
@@ -217,9 +219,12 @@ test.describe('US-011 — User Login', () => {
     expect(sidCookie, 'sid cookie must exist after login').toBeDefined();
     const sessionId = sidCookie!.value;
 
-    // 3. Real logout
-    await page.getByRole('button', { name: 'Log out' }).click();
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    // 3. Real logout — must redirect to /login
+    await Promise.all([
+      page.waitForURL('**/login'),
+      page.getByRole('button', { name: 'Log out' }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/login/);
 
     // 4. Cookie must be cleared from the browser
     const cookiesAfter = await page.context().cookies();
@@ -228,9 +233,9 @@ test.describe('US-011 — User Login', () => {
       'sid cookie must be absent after logout',
     ).toBeUndefined();
 
-    // 5. Reload confirms authMe returns null (no cookie sent → null response)
+    // 5. Reload confirms we stay on /login (no active session)
     await page.reload();
-    await expect(page.getByRole('link', { name: 'Log in' })).toBeVisible();
+    await expect(page).toHaveURL(/\/login/);
     await expect(page.getByText('Alice')).not.toBeVisible();
 
     // 6. Server-side: the old session ID must be invalidated in Redis
