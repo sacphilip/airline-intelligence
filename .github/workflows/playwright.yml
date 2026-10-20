@@ -1,4 +1,4 @@
-name: Playwright Tests
+﻿name: Playwright Tests
 on:
   push:
     branches: [ main, master ]
@@ -6,7 +6,7 @@ on:
     branches: [ main, master ]
 
 jobs:
-  # PRs from qa/* or develop: fast smoke check — mocked API, frontend only
+  # PRs from qa/* or develop: fast smoke check â€” mocked API, frontend only
   smoke:
     name: Smoke Tests
     if: >
@@ -29,7 +29,7 @@ jobs:
       run: npx playwright test --config playwright.smoke.config.ts
       env:
         CI: 'true'
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v5
       if: ${{ !cancelled() }}
       with:
         name: smoke-report
@@ -87,7 +87,7 @@ jobs:
         FRONTEND_URL: http://localhost:3000
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v5
       if: ${{ !cancelled() }}
       with:
         name: playwright-report
@@ -130,7 +130,7 @@ jobs:
         if [ -n "$files" ]; then
           echo "Running specs: $files"
         else
-          echo "No user-story specs changed — skipping"
+          echo "No user-story specs changed â€” skipping"
         fi
     - name: Check AeroDataBox key
       if: steps.changed.outputs.files != ''
@@ -158,7 +158,7 @@ jobs:
         FRONTEND_URL: http://localhost:3000
         AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
         ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v5
       if: steps.changed.outputs.files != '' && !cancelled()
       with:
         name: feature-api-report
