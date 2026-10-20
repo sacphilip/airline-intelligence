@@ -92,7 +92,7 @@ test('SM-UI-03: flight number search renders a FlightCard with the airline name'
   await mockApi(page);
   await page.goto('/');
   await page.locator('nav').getByRole('button', { name: 'Find Flight' }).click();
-  await page.getByPlaceholder(/e\.g\. 6E/i).fill('6E 5321');
+  await page.getByPlaceholder('e.g. 6E 5321, BA 117').fill('6E 5321');
   await page.getByRole('button', { name: 'Search' }).click();
   await expect(page.getByText('6E 5321', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'IndiGo' })).toBeVisible();
