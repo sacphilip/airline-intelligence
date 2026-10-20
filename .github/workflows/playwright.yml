@@ -39,15 +39,39 @@ jobs:
         PLAYWRIGHT_HTML_OUTPUT_DIR: smoke-report
         PLAYWRIGHT_HTML_OPEN: never
     # Locator drift: fix the locator, re-run the failed tests, and suggest the fix on the PR.
+    # 1. Deterministic pass; anything it can't place is written to heal-report/claude-request.md.
     - name: Heal drifted locators
       id: heal
       if: steps.smoke.outcome == 'failure'
-      run: |
-        if [ -n "$ANTHROPIC_API_KEY" ]; then npm install --no-save @anthropic-ai/sdk; fi
-        node scripts/ci/heal-locators.cjs --report smoke-results.json --config playwright.smoke.config.ts --claude
+      continue-on-error: true
+      run: node scripts/ci/heal-locators.cjs --report smoke-results.json --config playwright.smoke.config.ts --claude-request heal-report/claude-request.md
       env:
         CI: 'true'
-        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    # 2. Claude Code on the Pro/Max plan (CLAUDE_CODE_OAUTH_TOKEN). Read-only, structured answer.
+    - name: Ask Claude Code for locator fixes
+      id: claude
+      if: steps.heal.outputs.result == 'needs_claude'
+      continue-on-error: true
+      uses: anthropics/claude-code-action@v1
+      with:
+        claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        github_token: ${{ github.token }}
+        prompt: |
+          Read heal-report/claude-request.md and follow its instructions exactly.
+          Answer only through the structured output. Do not edit files or run commands.
+        claude_args: >-
+          --allowedTools Read
+          --max-turns 6
+          --json-schema '${{ steps.heal.outputs.schema }}'
+    # 3. Apply Claude Code's validated fixes and re-run the failed tests.
+    - name: Apply Claude Code's fixes
+      id: heal_resume
+      if: steps.heal.outputs.result == 'needs_claude'
+      continue-on-error: true
+      run: node scripts/ci/heal-locators.cjs --resume --config playwright.smoke.config.ts
+      env:
+        CI: 'true'
+        CLAUDE_ANSWER: ${{ steps.claude.outputs.structured_output }}
     - name: Post healing result on the PR
       if: always() && steps.heal.outcome != 'skipped'
       run: node scripts/ci/post-heal-comment.cjs
@@ -67,7 +91,10 @@ jobs:
         path: heal-report/
         retention-days: 14
     - name: Smoke result
-      if: steps.smoke.outcome == 'failure' && steps.heal.outcome != 'success'
+      if: >-
+        steps.smoke.outcome == 'failure' &&
+        steps.heal.outputs.result != 'healed' &&
+        steps.heal_resume.outputs.result != 'healed'
       run: |
         echo "::error::Smoke tests failed and not every failure could be healed — see the PR comment or job summary."
         exit 1

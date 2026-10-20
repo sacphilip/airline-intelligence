@@ -19,6 +19,11 @@
  *   node scripts/ci/heal-locators.cjs --report <playwright-json> --config <playwright-config>
  *        [--claude] [--out heal-report] [--tests-dir tests]
  *
+ * Claude Code route (claude-code-action with a Pro/Max token instead of an API key):
+ *   1. ... --claude-request heal-report/claude-request.md   (writes the request + state, outputs result=needs_claude)
+ *   2. anthropics/claude-code-action answers it (structured output, schema from the `schema` step output)
+ *   3. node scripts/ci/heal-locators.cjs --resume [--answer-env CLAUDE_ANSWER]   (applies the answer, re-runs)
+ *
  * Writes <out>/summary.json, <out>/healed.patch and <out>/comment.md.
  * Exit 0: every failure was healed and passes on re-run (the job may pass).
  * Exit 1: failures remain. Exit 2: the healer itself could not run.
@@ -32,19 +37,24 @@ const { spawnSync } = require('child_process');
 // ── Arguments ─────────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const opts = { report: null, config: null, claude: false, out: 'heal-report', testsDir: 'tests', root: process.cwd() };
+  const opts = { report: null, config: null, claude: false, out: 'heal-report', testsDir: 'tests', root: process.cwd(),
+    claudeRequest: null, resume: false, answerEnv: 'CLAUDE_ANSWER', answerFile: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
     if (a === '--report') opts.report = next();
     else if (a === '--config') opts.config = next();
     else if (a === '--claude') opts.claude = true;
+    else if (a === '--claude-request') opts.claudeRequest = next();
+    else if (a === '--resume') opts.resume = true;
+    else if (a === '--answer-env') opts.answerEnv = next();
+    else if (a === '--answer-file') opts.answerFile = next();
     else if (a === '--out') opts.out = next();
     else if (a === '--tests-dir') opts.testsDir = next();
     else if (a === '--root') opts.root = path.resolve(next());
     else throw new Error(`Unknown option ${a}`);
   }
-  if (!opts.report) throw new Error('--report <playwright json report> is required');
+  if (!opts.report && !opts.resume) throw new Error('--report <playwright json report> is required');
   return opts;
 }
 
@@ -261,7 +271,11 @@ function applyPatch(where, newValue, backups) {
 
 // ── Claude fallback ───────────────────────────────────────────────────────────
 
-/** Strip locator calls so we can check an edit changed nothing but locators. */
+/**
+ * Reduce every locator to one placeholder so we can check an edit changed nothing but
+ * locators. A chain (`getByRole('region', …).getByRole('button', …)`) counts as one locator,
+ * so scoping a locator to its container is allowed.
+ */
 function withoutLocators(line) {
   let s = line;
   for (let i = 0; i < 5; i++) {
@@ -269,8 +283,12 @@ function withoutLocators(line) {
     if (next === s) break;
     s = next;
   }
-  return s.replace(/\s+/g, '');
+  return s.replace(/L\(\)(?:\s*\.\s*L\(\))+/g, 'L()').replace(/\s+/g, '');
 }
+
+/** `.first()` / `.last()` / `.nth()` silence an ambiguous locator instead of fixing it. */
+const PICKS_ONE = /\.(?:first|last)\(\s*\)|\.nth\(/g;
+const pickCount = (s) => (s.match(PICKS_ONE) ?? []).length;
 
 function validClaudeEdit(edit, opts) {
   const abs = path.resolve(opts.root, edit.file);
@@ -282,6 +300,9 @@ function validClaudeEdit(edit, opts) {
   const n = src.split(edit.find).length - 1;
   if (n !== 1) return `the text to replace occurs ${n} times in ${edit.file}, expected exactly once`;
   const isLocatorMap = /[\\/](locators|pages)[\\/]/.test(abs);
+  if (pickCount(edit.replace) > pickCount(edit.find)) {
+    return 'edit adds .first()/.last()/.nth(), which hides an ambiguous locator instead of fixing it';
+  }
   if (!isLocatorMap && withoutLocators(edit.find) !== withoutLocators(edit.replace)) {
     return 'edit changes more than a locator (assertions and test logic must not change)';
   }
@@ -291,6 +312,65 @@ function validClaudeEdit(edit, opts) {
   return null;
 }
 
+// The answer Claude returns for failures the deterministic pass couldn't place. Shared by
+// both routes: the SDK (API key) and Claude Code in CI (claude-code-action + Pro/Max token).
+const LOCATOR_FIX_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['results'],
+  properties: {
+    results: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['test', 'verdict', 'reason', 'edits'],
+        properties: {
+          test: { type: 'string', description: 'Test title, exactly as given' },
+          verdict: { type: 'string', enum: ['locator_drift', 'not_drift'] },
+          reason: { type: 'string', description: 'One sentence: what changed on the page, or why this is a real failure' },
+          edits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['file', 'find', 'replace'],
+              properties: {
+                file: { type: 'string', description: 'Repo-relative path of the file to edit' },
+                find: { type: 'string', description: 'One complete line, copied exactly from the file' },
+                replace: { type: 'string', description: 'The same line with only the locator changed' },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+const CLAUDE_INSTRUCTIONS =
+  'You repair Playwright locators that drifted because the UI changed (an element was renamed, reworded or moved). ' +
+  'Use the page snapshot to find the element each failing locator was meant to target. ' +
+  'Only change locators: never change assertions, expected values, test steps or logic. ' +
+  'If the page no longer has the element at all, or the failure is not about finding an element, the verdict is not_drift with no edits. ' +
+  'A locator that matched several elements needs a more specific locator for the one element the test means (e.g. scope it to its container, or add exact: true) — never .first()/.nth() just to silence the error. ' +
+  'Each edit replaces one complete line copied exactly from the file. Prefer getByRole, then getByLabel, getByPlaceholder, getByText.';
+
+/** Everything Claude needs about each failure, as markdown. */
+function buildCases(failures, opts) {
+  const shared = ['locators', 'pages'].flatMap((d) => listTsFiles(path.join(opts.root, opts.testsDir, d)))
+    .map((p) => `--- ${posix(path.relative(opts.root, p))}\n${fs.readFileSync(p, 'utf-8')}`).join('\n');
+  const cases = failures.map((f) => {
+    const abs = path.join(opts.root, f.file);
+    const src = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8').split('\n') : [];
+    const from = Math.max(0, (f.line ?? 1) - 25);
+    const excerpt = src.slice(from, (f.line ?? 1) + 10).map((l, i) => `${String(from + i + 1).padStart(4)} | ${l}`).join('\n');
+    return `## Test: ${f.title}\nFile: ${f.file}:${f.line ?? '?'}\n\n### Error\n${f.message.slice(0, 3000)}\n\n### Page snapshot at failure (ARIA)\n${(f.snapshot ?? '(none)').slice(0, 12000)}\n\n### Source around the failure\n${excerpt}`;
+  });
+  return `${cases.join('\n\n')}\n\n## Shared locator / page-object files\n${shared.slice(0, 20000)}`;
+}
+
+/** Route 1: the Messages API through the SDK (needs ANTHROPIC_API_KEY with API credit). */
 async function claudeFixes(failures, opts) {
   let Anthropic;
   try {
@@ -299,77 +379,78 @@ async function claudeFixes(failures, opts) {
     return { error: 'the @anthropic-ai/sdk package is not installed' };
   }
   const client = new (Anthropic.default ?? Anthropic)();
-  const tool = {
-    name: 'propose_locator_fixes',
-    description: 'Report locator fixes for the failing tests, or why a failure is not locator drift.',
-    strict: true,
-    input_schema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['results'],
-      properties: {
-        results: {
-          type: 'array',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['test', 'verdict', 'reason', 'edits'],
-            properties: {
-              test: { type: 'string', description: 'Test title, exactly as given' },
-              verdict: { type: 'string', enum: ['locator_drift', 'not_drift'] },
-              reason: { type: 'string', description: 'One sentence: what changed on the page, or why this is a real failure' },
-              edits: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['file', 'find', 'replace'],
-                  properties: {
-                    file: { type: 'string', description: 'Repo-relative path of the file to edit' },
-                    find: { type: 'string', description: 'One complete line, copied exactly from the file' },
-                    replace: { type: 'string', description: 'The same line with only the locator changed' },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-
-  const cases = failures.map((f) => {
-    const abs = path.join(opts.root, f.file);
-    const src = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf-8').split('\n') : [];
-    const from = Math.max(0, (f.line ?? 1) - 25);
-    const excerpt = src.slice(from, (f.line ?? 1) + 10).map((l, i) => `${String(from + i + 1).padStart(4)} | ${l}`).join('\n');
-    const shared = ['locators', 'pages'].flatMap((d) => listTsFiles(path.join(opts.root, opts.testsDir, d)))
-      .map((p) => `--- ${posix(path.relative(opts.root, p))}\n${fs.readFileSync(p, 'utf-8')}`).join('\n');
-    return `## Test: ${f.title}\nFile: ${f.file}:${f.line ?? '?'}\n\n### Error\n${f.message.slice(0, 3000)}\n\n### Page snapshot at failure (ARIA)\n${(f.snapshot ?? '(none)').slice(0, 12000)}\n\n### Source around the failure\n${excerpt}\n\n### Shared locator / page-object files\n${shared.slice(0, 20000)}`;
-  });
-
   const response = await client.beta.messages.create({
     model: 'claude-opus-5-5',
     max_tokens: 16000,
     betas: ['server-side-fallback-2026-07-01'],
     fallbacks: 'default',
     output_config: { effort: 'medium' },
-    tools: [tool],
+    tools: [{ name: 'propose_locator_fixes', description: 'Report locator fixes for the failing tests, or why a failure is not locator drift.', strict: true, input_schema: LOCATOR_FIX_SCHEMA }],
     tool_choice: { type: 'auto' },
-    system:
-      'You repair Playwright locators that drifted because the UI changed (an element was renamed, reworded or moved). ' +
-      'Use the page snapshot to find the element each failing locator was meant to target. ' +
-      'Only change locators: never change assertions, expected values, test steps or logic. ' +
-      'If the page no longer has the element at all, or the failure is not about finding an element, the verdict is not_drift with no edits. ' +
-      'Each edit replaces one complete line copied exactly from the file. Prefer getByRole, then getByLabel, getByPlaceholder, getByText. ' +
-      'Report your answer by calling the propose_locator_fixes tool once.',
-    messages: [{ role: 'user', content: cases.join('\n\n') }],
+    system: `${CLAUDE_INSTRUCTIONS} Report your answer by calling the propose_locator_fixes tool once.`,
+    messages: [{ role: 'user', content: buildCases(failures, opts) }],
   });
-
   if (response.stop_reason === 'refusal') return { error: 'Claude declined the request' };
   const call = response.content.find((b) => b.type === 'tool_use' && b.name === 'propose_locator_fixes');
   if (!call) return { error: 'Claude did not return fixes' };
   return { results: call.input.results ?? [] };
+}
+
+/**
+ * Route 2: Claude Code in CI. Write a request for anthropics/claude-code-action to answer
+ * (it reads this file and returns structured output matching LOCATOR_FIX_SCHEMA); the healer
+ * then resumes from the saved state with that answer.
+ */
+function writeClaudeRequest(file, failures, opts) {
+  const body = [
+    '# Locator repair request',
+    '',
+    CLAUDE_INSTRUCTIONS,
+    '',
+    'Read this file only; do not edit files or run commands. Answer with the structured output',
+    '(one entry in `results` per test below, using each test title exactly as written).',
+    '',
+    buildCases(failures, opts),
+    '',
+  ].join('\n');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, body, 'utf-8');
+}
+
+/** Apply Claude's answer (from either route) to the pending failures, validating every edit. */
+function applyClaudeResults(res, pending, summary, backups, opts) {
+  for (const p of pending) {
+    const r = res.results?.find((x) => x.test === p.f.title);
+    if (!r) { summary.unhealed.push({ ...p.base, reason: `${p.reason}; Claude: ${res.error ?? 'no answer for this test'}` }); continue; }
+    if (r.verdict !== 'locator_drift' || !r.edits?.length) { summary.unhealed.push({ ...p.base, reason: `Claude: ${r.reason}` }); continue; }
+    const problems = r.edits.map((e) => validClaudeEdit(e, opts)).filter(Boolean);
+    if (problems.length) { summary.unhealed.push({ ...p.base, reason: `Claude's edit rejected: ${problems[0]}` }); continue; }
+    for (const e of r.edits) {
+      const abs = path.resolve(opts.root, e.file);
+      const src = fs.readFileSync(abs, 'utf-8');
+      backups.has(abs) || backups.set(abs, src);
+      fs.writeFileSync(abs, src.replace(e.find, e.replace), 'utf-8');
+      summary.healed.push({
+        ...p.base, engine: 'claude', reasonText: r.reason, editedFile: posix(e.file),
+        editedLine: src.slice(0, src.indexOf(e.find)).split('\n').length, from: e.find.trim(), to: e.replace.trim(),
+      });
+    }
+  }
+}
+
+/** The answer handed back by claude-code-action (its structured_output), from an env var or file. */
+function readClaudeAnswer(opts) {
+  const raw = opts.answerFile && fs.existsSync(opts.answerFile)
+    ? fs.readFileSync(opts.answerFile, 'utf-8')
+    : (process.env[opts.answerEnv] ?? '');
+  if (!raw.trim()) return { error: 'Claude Code did not answer (the step was skipped or failed — is the CLAUDE_CODE_OAUTH_TOKEN secret set, and does the PR author have write access?)' };
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.results)) return { error: 'Claude Code answer has no results array' };
+    return { results: parsed.results };
+  } catch (err) {
+    return { error: `Claude Code answer is not valid JSON: ${err.message}` };
+  }
 }
 
 // ── Running Playwright ────────────────────────────────────────────────────────
@@ -387,14 +468,48 @@ function rerunFailed(opts, reportFile) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+const STATE_FILE = 'state.json';
+
+function saveState(out, state) {
+  const backups = Object.fromEntries([...state.backups].map(([k, v]) => [k, Buffer.from(v, 'utf-8').toString('base64')]));
+  fs.writeFileSync(path.join(out, STATE_FILE), JSON.stringify({ ...state, backups }, null, 2), 'utf-8');
+}
+
+function loadState(out) {
+  const file = path.join(out, STATE_FILE);
+  if (!fs.existsSync(file)) throw new Error(`--resume: no ${file} — run the healer with --claude-request first`);
+  const s = JSON.parse(fs.readFileSync(file, 'utf-8'));
+  s.backups = new Map(Object.entries(s.backups).map(([k, v]) => [k, Buffer.from(v, 'base64').toString('utf-8')]));
+  return s;
+}
+
+/** For GitHub Actions: result = healed | failed | needs_claude. */
+function setOutput(key, value) {
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `${key}=${value}\n`, 'utf-8');
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const out = path.resolve(opts.root, opts.out);
   fs.mkdirSync(out, { recursive: true });
+  // The schema goes into claude_args inside single quotes, so it must not contain one.
+  const schema = JSON.stringify(LOCATOR_FIX_SCHEMA);
+  if (schema.includes("'")) throw new Error('LOCATOR_FIX_SCHEMA must not contain single quotes');
+  setOutput('schema', schema);
+
+  // Second invocation of the Claude Code route: pick up where pass 1 stopped.
+  if (opts.resume) {
+    const state = loadState(out);
+    const answer = readClaudeAnswer(opts);
+    state.summary.claude = answer.error ? { error: answer.error } : { asked: state.pending.length, via: 'claude-code' };
+    applyClaudeResults(answer, state.pending, state.summary, state.backups, opts);
+    return finalize(state.summary, state.failureTitles, state.backups, opts, out);
+  }
+
+  if (!opts.report) throw new Error('--report <playwright json report> is required');
   const report = JSON.parse(fs.readFileSync(path.resolve(opts.root, opts.report), 'utf-8'));
   const failures = failedTests(report, opts.root);
   const summary = { failed: failures.length, healed: [], unhealed: [], claude: null, rerun: null };
-
   if (!failures.length) return finish(summary, out, 0);
 
   // Pass 1 — deterministic
@@ -417,29 +532,22 @@ async function main() {
       from: unescapeJs(parsed.value), to: fix.newValue,
     });
   }
+  const failureTitles = failures.map((f) => f.title);
 
   // Pass 2 — Claude, for locator failures pass 1 couldn't place
+  if (pending.length && opts.claudeRequest) {
+    // Claude Code route: hand the remaining failures to claude-code-action, then resume.
+    writeClaudeRequest(path.resolve(opts.root, opts.claudeRequest), pending.map((p) => p.f), opts);
+    saveState(out, { summary, pending, backups, failureTitles });
+    setOutput('result', 'needs_claude');
+    console.log(`[heal-locators] ${summary.healed.length} healed deterministically; ${pending.length} handed to Claude Code (${opts.claudeRequest})`);
+    return;
+  }
   if (pending.length && opts.claude && process.env.ANTHROPIC_API_KEY) {
     try {
       const res = await claudeFixes(pending.map((p) => p.f), opts);
-      summary.claude = res.error ? { error: res.error } : { asked: pending.length };
-      for (const p of pending) {
-        const r = res.results?.find((x) => x.test === p.f.title);
-        if (!r) { summary.unhealed.push({ ...p.base, reason: `${p.reason}; Claude: ${res.error ?? 'no answer for this test'}` }); continue; }
-        if (r.verdict !== 'locator_drift' || !r.edits.length) { summary.unhealed.push({ ...p.base, reason: `Claude: ${r.reason}` }); continue; }
-        const problems = r.edits.map((e) => validClaudeEdit(e, opts)).filter(Boolean);
-        if (problems.length) { summary.unhealed.push({ ...p.base, reason: `Claude's edit rejected: ${problems[0]}` }); continue; }
-        for (const e of r.edits) {
-          const abs = path.resolve(opts.root, e.file);
-          const src = fs.readFileSync(abs, 'utf-8');
-          backups.has(abs) || backups.set(abs, src);
-          fs.writeFileSync(abs, src.replace(e.find, e.replace), 'utf-8');
-          summary.healed.push({
-            ...p.base, engine: 'claude', reasonText: r.reason, editedFile: posix(e.file),
-            editedLine: src.slice(0, src.indexOf(e.find)).split('\n').length, from: e.find.trim(), to: e.replace.trim(),
-          });
-        }
-      }
+      summary.claude = res.error ? { error: res.error } : { asked: pending.length, via: 'api' };
+      applyClaudeResults(res, pending, summary, backups, opts);
     } catch (err) {
       summary.claude = { error: err.message };
       for (const p of pending) summary.unhealed.push({ ...p.base, reason: `${p.reason}; Claude call failed` });
@@ -447,12 +555,14 @@ async function main() {
   } else {
     for (const p of pending) summary.unhealed.push({ ...p.base, reason: p.reason + (opts.claude ? ' (Claude skipped: no ANTHROPIC_API_KEY)' : '') });
   }
+  return finalize(summary, failureTitles, backups, opts, out);
+}
 
+/** Re-run the failed tests with the healed locators; keep only fixes that made their test pass. */
+function finalize(summary, failureTitles, backups, opts, out) {
   if (!summary.healed.length) return finish(summary, out, 1);
-
-  // Re-run the failed tests with the healed locators. Keep only fixes that made their test pass.
   const rerun = rerunFailed(opts, path.join(out, 'rerun.json'));
-  const stillFailing = new Set(rerun.report ? failedTests(rerun.report, opts.root).map((f) => f.title) : failures.map((f) => f.title));
+  const stillFailing = new Set(rerun.report ? failedTests(rerun.report, opts.root).map((f) => f.title) : failureTitles);
   summary.rerun = { passed: !stillFailing.size, stillFailing: [...stillFailing] };
   const kept = summary.healed.filter((h) => !stillFailing.has(h.test));
   const dropped = summary.healed.filter((h) => stillFailing.has(h.test));
@@ -461,7 +571,6 @@ async function main() {
   const keepFiles = new Set(kept.map((h) => path.resolve(opts.root, h.editedFile)));
   for (const [file, original] of backups) if (!keepFiles.has(file)) fs.writeFileSync(file, original, 'utf-8');
   summary.healed = kept;
-
   writePatch(opts, out, keepFiles);
   return finish(summary, out, stillFailing.size ? 1 : 0);
 }
@@ -484,6 +593,7 @@ function finish(summary, out, code) {
   for (const h of summary.healed) console.log(`  ✓ ${h.test}: ${h.editedFile}:${h.editedLine} ${JSON.stringify(h.from)} → ${JSON.stringify(h.to)} (${h.engine})`);
   for (const u of summary.unhealed) console.log(`  ✗ ${u.test}: ${u.reason}`);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, commentMarkdown(summary, code), 'utf-8');
+  setOutput('result', code === 0 ? 'healed' : 'failed');
   process.exitCode = code;
 }
 
@@ -514,4 +624,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { failingLocator, parseLocator, parseSnapshot, deterministicFix, withoutLocators, validClaudeEdit, similarity };
+module.exports = { failingLocator, parseLocator, parseSnapshot, deterministicFix, withoutLocators, validClaudeEdit, similarity, LOCATOR_FIX_SCHEMA };
