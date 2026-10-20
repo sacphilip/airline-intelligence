@@ -94,7 +94,7 @@ After stage 7:
 - Never allow healing of `PRODUCT_DEFECT` failures
 - Maximum 2 healing attempts per test
 - Always produce the final report regardless of outcome
-- Mock all API calls via `page.route()` — AeroDataBox quota is nearly exhausted
+- Tests use the real backend — never mock API calls with `page.route()`; assert on the data the backend actually returned
 
 ## Your first action
 

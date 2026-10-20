@@ -31,7 +31,8 @@ export function analyzeStory(cfg: ProjectConfig, storyPath: string): UiContext {
 
   const start = lines.findIndex(l => /^##\s+acceptance criteria/i.test(l));
   if (start === -1) throw new Error(`No "## Acceptance Criteria" section found in ${storyPath}`);
-  const end = lines.findIndex((l, i) => i > start && /^##/.test(l));
+  // The section ends at the next level-1/2 heading; "###" sub-headings inside it are part of it.
+  const end = lines.findIndex((l, i) => i > start && /^#{1,2}\s/.test(l));
   const bullets = lines.slice(start + 1, end === -1 ? undefined : end).filter(l => /^\s*[-*]/.test(l));
 
   const requirements: UiRequirement[] = bullets.map((line, i) => ({

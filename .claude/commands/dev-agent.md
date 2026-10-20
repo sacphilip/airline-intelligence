@@ -50,20 +50,28 @@ Read the full file. Extract: story ID, title, acceptance criteria, backend endpo
 
 ---
 
-### 2. Create the feature branch via GitHub MCP
+### 2. Check prerequisites, then create the feature branch in its own worktree
 
-Call `mcp__github__create_branch` with:
-```json
-{
-  "owner": "sacphilip",
-  "repo": "airline-intelligence",
-  "branch": "feature/<story-id-kebab>",
-  "from_branch": "develop"
-}
+**Prerequisite — GitHub CLI.** Run `gh auth status`. If `gh` is missing or not logged in, **stop**
+and tell the user to run, once:
 ```
-Example branch name: `feature/us-006-airline-profile`
+winget install --id GitHub.cli      # then open a new terminal
+gh auth login                       # GitHub.com → HTTPS → log in with a browser
+```
+Don't start implementing without it: the run must end with a PR.
 
-Do NOT run any `git` commands for branching — GitHub MCP owns this step.
+**Branch.** Name: `feature/<story-id-kebab>`, e.g. `feature/us-006-airline-profile`.
+
+Work in a separate **git worktree**, never in the main checkout: other sessions use the main
+folder, and switching its branch would disturb their uncommitted work.
+```
+git fetch origin develop
+git worktree add -b feature/<story-id-kebab> ../flight-tracker-wt/<story-id-kebab> origin/develop
+```
+- If the branch already exists (a re-run), reuse it: `git worktree add ../flight-tracker-wt/<story-id-kebab> feature/<story-id-kebab>`
+  (or use the existing worktree folder if `git worktree list` shows one).
+- From here on, **every** read, edit and command happens inside `../flight-tracker-wt/<story-id-kebab>/`.
+- Install dependencies there so type checks work: `npm ci --prefix backend` and `npm ci --prefix frontend`.
 
 ---
 
@@ -103,45 +111,48 @@ Fix any type errors before moving to the next step.
 
 ---
 
-### 7. Push all changes via GitHub MCP
+### 7. Commit and push (inside the worktree)
 
-Call `mcp__github__push_files` with **every file you created or modified**:
-
-```json
-{
-  "owner": "sacphilip",
-  "repo": "airline-intelligence",
-  "branch": "feature/<story-id-kebab>",
-  "message": "feat(<story-id>): <story title in sentence case>\n\n- <bullet 1>\n- <bullet 2>\n- <bullet 3>\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>",
-  "files": [
-    { "path": "backend/src/...", "content": "<base64-encoded file content>" },
-    { "path": "frontend/src/...", "content": "<base64-encoded file content>" }
-  ]
-}
+Stage **by name** every file you created or modified — never `git add -A` or `git add .`:
 ```
+git add backend/src/... frontend/src/...
+git status --short          # confirm only your files are staged
+git commit -F <message-file>
+git push -u origin feature/<story-id-kebab>
+```
+
+Commit message:
+```
+feat(<story-id>): <story title in sentence case>
+
+- <what was built: repository method, endpoint, component, API client method>
+- <…>
+```
+End it with the co-author line your session's commit attribution instructions specify.
 
 Rules:
 - Include **every** file changed — backend, frontend, any new module wiring
-- Encode each file's full content as base64
-- Never include: `.env`, `*.db`, `*.db-shm`, `dist/`, `node_modules/`, `tsconfig.tsbuildinfo`, `reports/`, `test-results/`
-- Commit message bullets: what was built (repository method, endpoint, component, API client method)
+- Never include: `.env`, `*.db`, `*.db-shm`, `*.db-wal`, `dist/`, `node_modules/`, `tsconfig.tsbuildinfo`, `reports/`, `test-results/`
+- If a pre-commit hook fails, fix the cause and commit again — never `--no-verify`
+- If the push is rejected because the remote branch moved, `git pull --rebase` and push again; never force-push
 
 ---
 
-### 8. Open a Pull Request via GitHub MCP
+### 8. Open a Pull Request against `develop` — always the last step
 
-Call `mcp__github__create_pull_request` with:
-
-```json
-{
-  "owner": "sacphilip",
-  "repo": "airline-intelligence",
-  "title": "feat(<story-id>): <story title>",
-  "body": "<PR body — see template below>",
-  "head": "feature/<story-id-kebab>",
-  "base": "develop"
-}
+Write the PR body (template below) to a temporary file, then:
 ```
+gh pr create --repo sacphilip/airline-intelligence --base develop \
+  --head feature/<story-id-kebab> \
+  --title "feat(<story-id>): <story title>" --body-file <body-file>
+```
+- If a PR for this branch already exists (a re-run), don't create another: update it with
+  `gh pr edit feature/<story-id-kebab> --body-file <body-file>` and report its URL from
+  `gh pr view feature/<story-id-kebab> --json url -q .url`.
+- The base is **always** `develop` — never `main`/`master`.
+- If `gh pr create` fails, show the error and give the user the manual link
+  `https://github.com/sacphilip/airline-intelligence/compare/develop...feature/<story-id-kebab>?expand=1`.
+  Don't report the run as finished without either a PR URL or that link.
 
 **PR body template:**
 ```markdown
@@ -180,8 +191,8 @@ Call `mcp__github__create_pull_request` with:
 ### 9. Final report
 
 Output:
-- Feature branch name
-- PR URL (from MCP response)
+- Feature branch name and worktree path (`../flight-tracker-wt/<story-id-kebab>`)
+- PR URL (from `gh pr create` / `gh pr view`)
 - Backend: endpoints added with HTTP method + path
 - Frontend: components/methods added
 - Files pushed (count)

@@ -16,3 +16,6 @@ weather_history.json
 
 # QA orchestrator state, review packets and reports
 .qa-orchestrator/
+
+# Locator healer output (CI artifact)
+heal-report/

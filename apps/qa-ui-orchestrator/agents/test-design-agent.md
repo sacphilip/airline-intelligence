@@ -80,13 +80,13 @@ You must cover at minimum:
 
 Mark `automation: false` only when:
 - Requires visual/human judgment
-- Depends on unpredictable live data
-- Cannot be made deterministic with mocking
+- Needs a backend state the real API can't produce on demand (e.g. a 500, a slow response) — tests never fake API responses
 
 ## Project context
 
-- API calls go to `http://localhost:3100/api/*` and must be intercepted with `page.route()` in tests
-- AeroDataBox quota: ~400 units/month, nearly exhausted — **all tests that invoke flight search, route, history, or airline profile MUST mock the API**
+- Tests run against the **real backend** at `http://localhost:3100/api/*` — no `page.route()` mocks
+- Flight data is live: design expectations as "the UI shows what the backend returned" (row counts, statuses, times), not fixed values
+- AeroDataBox: Pro plan, 5,000 units/month; a full live UI run costs roughly 6–8 units, and responses are cached in Redis for 15–30 min
 - Live Map tab loads ADS-B aircraft — do not test specific aircraft counts (non-deterministic)
 
 ## After this step
