@@ -12,8 +12,12 @@ class LoginDto {
   password: string;
 }
 
-const COOKIE = 'sid';
+export const COOKIE = 'sid';
 const MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+
+export function setSessionCookie(res: Response, sessionId: string) {
+  res.cookie(COOKIE, sessionId, { httpOnly: true, sameSite: 'lax', maxAge: MAX_AGE, path: '/' });
+}
 
 @Controller('api/auth')
 export class AuthController {
@@ -28,7 +32,7 @@ export class AuthController {
 
     try {
       const { sessionId, user } = await this.auth.login(body.email, body.password, identifier);
-      res.cookie(COOKIE, sessionId, { httpOnly: true, sameSite: 'lax', maxAge: MAX_AGE, path: '/' });
+      setSessionCookie(res, sessionId);
       return { id: user.userId, email: user.email, firstName: user.firstName };
     } catch (e: any) {
       const msg = e?.message;
