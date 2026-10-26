@@ -16,6 +16,8 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 20_000 },
   reporter: [['html', { open: 'never' }], ['list']],
+  // Runs after the webServers are up (the backend has created its tables): seeds test users.
+  globalSetup: './tests/support/global-setup.ts',
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
