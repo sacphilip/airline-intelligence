@@ -36,7 +36,7 @@ function buildTestBody(tc: TestCase): string[] {
   } else {
     // For data-dependent endpoints accept 200 OR known alternates (404/503)
     lines.push(`    // Accept 200, 404 (no data), or 503 (external service not configured)`);
-    lines.push(`    expect(res.status()).toBeLessThan(500);`);
+    lines.push(`    expect(res.status() < 500 || res.status() === 503).toBe(true);`);
 
     if (tc.expectedFields && tc.expectedFields.length > 0) {
       lines.push(`    if (res.status() === 200) {`);

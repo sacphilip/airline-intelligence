@@ -18,14 +18,14 @@ test.describe('US-006', () => {
   test("TC-006-03: valid request resolves", async ({ request }) => {
     const res = await request.get("/api/airline/profile", {"params":{"iata":"6E"}});
     // Accept 200, 404 (no data), or 503 (external service not configured)
-    expect(res.status()).toBeLessThan(500);
+    expect(res.status() < 500 || res.status() === 503).toBe(true);
   });
 
   // REQ-006-12
   test("TC-006-04: response is valid JSON", async ({ request }) => {
     const res = await request.get("/api/airline/profile", {"params":{"iata":"6E"}});
     // Accept 200, 404 (no data), or 503 (external service not configured)
-    expect(res.status()).toBeLessThan(500);
+    expect(res.status() < 500 || res.status() === 503).toBe(true);
     if (res.status() === 200) {
       const body = await res.json();
       expect(body).toBeDefined();
