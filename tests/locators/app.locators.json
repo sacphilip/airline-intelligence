@@ -1,6 +1,6 @@
 {
   "body":         { "css": "body" },
-  "appTitle":     { "text": "Flight Tracker" },
+  "appTitle":     { "text": "Flight Intelligence System" },
   "nav":          { "css": "nav" },
   "tabMap":       { "within": "nav", "role": "button", "name": "Live Map" },
   "tabFlight":    { "within": "nav", "role": "button", "name": "Find Flight" },

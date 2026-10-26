@@ -7,7 +7,7 @@ import { test, expect } from '../fixtures/test.fixture';
 import { AppPage } from '../pages/AppPage';
 
 test.describe('App navigation', () => {
-  test('TC-NAV-01: page loads and shows Flight Tracker header', async ({ app }) => {
+  test('TC-NAV-01: page loads and shows the app header', async ({ app }) => {
     await expect(app.appTitle).toBeVisible();
   });
 
