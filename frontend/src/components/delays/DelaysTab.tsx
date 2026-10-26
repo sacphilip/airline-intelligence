@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { DelaysResult, DelayFlight } from '@/lib/types';
 import { delayClass, fmtDuration, airportCode, DELAYED_MIN } from '@/lib/format';
 import { fmtDelayMinutes } from '@/lib/flight-status';
+import { DelayTrendChart } from './DelayTrendChart';
 
 interface Props { initialAirport: string | null; onConsumeAirport: () => void }
 type Direction = 'Both' | 'Arrival' | 'Departure';
@@ -123,6 +124,12 @@ export function DelaysTab({ initialAirport, onConsumeAirport }: Props) {
               </button>
             ))}
           </div>
+
+          {/* US-014: delays by hour, following the direction filter */}
+          <DelayTrendChart
+            flights={flights}
+            range={data.fetchedAt ? { from: data.fetchedAt - 6 * 3_600_000, to: data.fetchedAt + 6 * 3_600_000 } : undefined}
+          />
 
           {/* Airline ranking */}
           {ranked.length > 0 && (
