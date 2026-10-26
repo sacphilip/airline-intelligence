@@ -75,9 +75,13 @@ export default function Home() {
             {/* Auth nav */}
             {currentUser ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground hidden sm:block">
+                <a
+                  href="/account"
+                  title="Your account"
+                  className="text-sm text-muted-foreground hover:text-foreground hidden sm:block"
+                >
                   {currentUser.firstName ?? currentUser.email?.split('@')[0]}
-                </span>
+                </a>
                 <button
                   onClick={async () => { await api.authLogout(); location.href = '/login'; }}
                   className="px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition"

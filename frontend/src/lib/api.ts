@@ -67,4 +67,35 @@ export const api = {
 
   authMe: () =>
     apiFetch<{ id: number; email: string; firstName: string | null } | null>('/api/auth/me'),
+
+  // ── Social login (US-012) ──
+  oauthProviders: () =>
+    apiFetch<string[]>('/api/auth/oauth/providers'),
+
+  /** Full-page navigation target (not a fetch): the backend redirects to the provider. */
+  oauthStartUrl: (provider: string, opts: { next?: string; intent?: 'link' } = {}) => {
+    const p = new URLSearchParams();
+    if (opts.next && opts.next !== '/') p.set('next', opts.next);
+    if (opts.intent) p.set('intent', opts.intent);
+    const qs = p.toString();
+    return `${BASE}/api/auth/oauth/${encodeURIComponent(provider)}/start${qs ? `?${qs}` : ''}`;
+  },
+
+  oauthLinks: () =>
+    apiFetch<LinkedAccounts>('/api/auth/oauth/links'),
+
+  oauthLink: (provider: string, linkToken: string) =>
+    apiFetch<LinkedAccounts>(`/api/auth/oauth/${encodeURIComponent(provider)}/link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ linkToken }),
+    }),
+
+  oauthUnlink: (provider: string) =>
+    apiFetch<LinkedAccounts>(`/api/auth/oauth/${encodeURIComponent(provider)}/link`, { method: 'DELETE' }),
 };
+
+export interface LinkedAccounts {
+  hasPassword: boolean;
+  linked: { provider: string; email: string; linkedAt: string }[];
+}

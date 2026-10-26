@@ -41,7 +41,8 @@ export class AuthService {
 
     const normalised = email.toLowerCase().trim();
     const user = await this.users.findOne({ where: { email: normalised } });
-    const valid = user ? await bcrypt.compare(password, user.passwordHash) : false;
+    // Social-only accounts have no password: same generic error as a wrong password.
+    const valid = user?.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
 
     if (!valid) {
       const withinWindow = (Date.now() - rl.firstAt) < WINDOW_MS;
@@ -53,9 +54,13 @@ export class AuthService {
     }
 
     await this.cache.del(rlKey);
+    return this.createSession(user!);
+  }
 
+  /** Same session for password and social login: a random ID in Redis for 30 days. */
+  async createSession(user: User): Promise<{ sessionId: string; user: SessionData }> {
     const sessionId = crypto.randomUUID();
-    const sessionData: SessionData = { userId: user!.id, email: user!.email, firstName: user!.firstName };
+    const sessionData: SessionData = { userId: user.id, email: user.email, firstName: user.firstName };
     await this.cache.set(`auth:sess:${sessionId}`, sessionData, SESSION_TTL_MS);
     return { sessionId, user: sessionData };
   }

@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { SocialButtons } from '@/components/auth/SocialButtons';
+import { oauthErrorMessage, safeNext, linkErrorCode } from '@/components/auth/oauth-messages';
 
 export default function LoginPage() {
   const [email, setEmail]         = useState('');
@@ -9,9 +11,20 @@ export default function LoginPage() {
   const [emailErr, setEmailErr]   = useState('');
   const [formErr, setFormErr]     = useState('');
   const [loading, setLoading]     = useState(false);
+  const [next, setNext]           = useState('/');
+  // Social login (US-012): an existing-email callback hands over a one-time link token.
+  const [pendingLink, setPendingLink] = useState<{ provider: string; token: string } | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { emailRef.current?.focus(); }, []);
+  useEffect(() => {
+    emailRef.current?.focus();
+    const q = new URLSearchParams(location.search);
+    setNext(safeNext(q.get('next')));
+    const msg = oauthErrorMessage(q.get('oauth_error'), q.get('provider'));
+    if (msg) setFormErr(msg);
+    const provider = q.get('provider'), token = q.get('link_token');
+    if (provider && token) setPendingLink({ provider, token });
+  }, []);
 
   const validateEmail = (v: string) => {
     if (!v) return 'Email is required.';
@@ -33,7 +46,16 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await api.authLogin(email, password);
-      const next = new URLSearchParams(location.search).get('next') ?? '/';
+      if (pendingLink) {
+        // Password login proved ownership of the email: now link the provider account.
+        try {
+          await api.oauthLink(pendingLink.provider, pendingLink.token);
+          location.href = `/account?provider=${encodeURIComponent(pendingLink.provider)}&linked=1`;
+        } catch (linkErr) {
+          location.href = `/account?provider=${encodeURIComponent(pendingLink.provider)}&oauth_error=${linkErrorCode(linkErr)}`;
+        }
+        return;
+      }
       location.href = next;
     } catch (err: any) {
       setFormErr(err?.message ?? 'Login failed. Please try again.');
@@ -104,6 +126,9 @@ export default function LoginPage() {
             {loading ? 'Signing in…' : 'Log in'}
           </button>
         </form>
+
+        {/* While linking an existing account, only the password login makes sense. */}
+        {!pendingLink && <SocialButtons next={next} />}
       </div>
     </div>
   );
