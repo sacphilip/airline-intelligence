@@ -80,7 +80,10 @@ export interface DelayFlight {
 
 export interface DelaysResult {
   airport: string;
+  /** Epoch ms of the upstream fetch (responses are cached for 15 min). */
   fetchedAt: number;
+  /** Epoch ms range the board covers: 6 h before to 6 h after fetchedAt. */
+  window?: { from: number; to: number };
   flights: DelayFlight[];
 }
 

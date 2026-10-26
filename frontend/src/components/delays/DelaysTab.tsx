@@ -18,6 +18,15 @@ export function DelaysTab({ initialAirport, onConsumeAirport }: Props) {
   const [error, setError] = useState('');
   const [direction, setDirection] = useState<Direction>('Both');
   const [rankMetric, setRankMetric] = useState<'total' | 'delayed' | 'pct' | 'avg'>('total');
+  const [now, setNow] = useState(() => Date.now());
+
+  // Keeps "updated N min ago" current while the board is on screen.
+  useEffect(() => {
+    if (!data) return;
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, [data]);
 
   useEffect(() => {
     if (initialAirport) { setAirportInput(initialAirport); onConsumeAirport(); load(initialAirport); }
@@ -99,6 +108,8 @@ export function DelaysTab({ initialAirport, onConsumeAirport }: Props) {
 
       {data && (
         <div className="space-y-4 animate-fade-in">
+          <BoardPeriod data={data} now={now} />
+
           {/* Stats row */}
           <div className="grid grid-cols-3 gap-3">
             {[
@@ -193,5 +204,25 @@ export function DelaysTab({ initialAirport, onConsumeAirport }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+const HOUR_MS = 3_600_000;
+
+/** "Last 6 h · next 6 h · updated 4 min ago" — the period the board covers and how old it is. */
+function BoardPeriod({ data, now }: { data: DelaysResult; now: number }) {
+  const { window: w, fetchedAt } = data;
+  const back = w ? Math.round((fetchedAt - w.from) / HOUR_MS) : 6;
+  const ahead = w ? Math.round((w.to - fetchedAt) / HOUR_MS) : 6;
+  const mins = fetchedAt ? Math.max(0, Math.floor((now - fetchedAt) / 60_000)) : null;
+  const age = mins == null ? null : mins < 1 ? 'updated just now' : `updated ${mins} min ago`;
+  const time = (t: number) => new Date(t).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  const range = w ? `${time(w.from)} – ${time(w.to)} (your time)` : undefined;
+
+  return (
+    <p className="text-xs text-muted-foreground" title={range}>
+      <span className="font-medium text-foreground">{data.airport}</span>
+      {' · '}Last {back} h · next {ahead} h{age && ` · ${age}`}
+    </p>
   );
 }

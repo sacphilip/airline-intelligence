@@ -55,13 +55,32 @@ export class AirportService {
     return flights;
   }
 
+  /** Arrivals + departures from 6 h ago to 6 h ahead, cached for BOARD_TTL. */
   async airportDelays(code: string) {
-    const cacheKey = `board:${code}`;
-    const cached = await this.cacheManager.get<any[]>(cacheKey);
-    if (cached) return { airport: code, flights: cached };
+    // v2: the cache holds the whole result, so a cached response keeps its fetchedAt and window.
+    const cacheKey = `board:v2:${code}`;
+    const cached = await this.cacheManager.get<DelaysBoard>(cacheKey);
+    if (cached) return cached;
 
-    const flights = await this.fetchBoard(code, { offsetMinutes: -360, durationMinutes: 720 });
-    await this.cacheManager.set(cacheKey, flights, BOARD_TTL);
-    return { airport: code, fetchedAt: Date.now(), flights };
+    const window = { offsetMinutes: -360, durationMinutes: 720 };
+    const fetchedAt = Date.now();
+    const flights = await this.fetchBoard(code, window);
+    const result: DelaysBoard = {
+      airport: code,
+      fetchedAt,
+      window: { from: fetchedAt + window.offsetMinutes * 60_000, to: fetchedAt + (window.offsetMinutes + window.durationMinutes) * 60_000 },
+      flights,
+    };
+    await this.cacheManager.set(cacheKey, result, BOARD_TTL);
+    return result;
   }
+}
+
+export interface DelaysBoard {
+  airport: string;
+  /** Epoch ms of the AeroDataBox fetch. */
+  fetchedAt: number;
+  /** Epoch ms range the board covers. */
+  window: { from: number; to: number };
+  flights: any[];
 }
