@@ -265,8 +265,8 @@ Don't report the run as finished without a PR URL or that link.
 ## UI tests for <story-id> — <story title>
 User story: `user-stories/<filename>.md`
 
-## Coverage review
-<if this run had a coverage review: coverage % · approved by <reviewer>; excluded IDs if any — otherwise omit this section>
+## Coverage review (Stage 2b)
+<coverage %> · approved by <reviewer><; excluded: <ids> if any>
 
 ## Results
 ✅ <passed> passed · ❌ <failed> failed · ⏭ <skipped> skipped · status <PASS | FAIL | BLOCKED>
