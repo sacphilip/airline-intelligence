@@ -34,6 +34,10 @@ jobs:
   ui-regression:
     name: Regression / UI
     runs-on: ubuntu-latest
+    # contents/pull-requests: write let a healed run push a heal branch and open its PR.
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 30
 
     services:
@@ -79,9 +83,13 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run full UI test suite
-        run: npm test
+        id: ui
+        continue-on-error: true
+        run: npm test -- --reporter=list,json,html
         env:
           CI: 'true'
+          PLAYWRIGHT_JSON_OUTPUT_NAME: ui-results.json
+          PLAYWRIGHT_HTML_OPEN: never
           DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
           REDIS_HOST: localhost
           REDIS_PORT: 6379
@@ -103,12 +111,88 @@ jobs:
           path: test-results/
           retention-days: 7
 
+      # Locator drift: same healer as the PR smoke checks (deterministic, then Claude Code).
+      - name: Heal drifted locators
+        id: heal
+        if: steps.ui.outcome == 'failure'
+        continue-on-error: true
+        run: node scripts/ci/heal-locators.cjs --report ui-results.json --config playwright.config.ts --claude-request heal-report/claude-request.md
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          FRONTEND_URL: http://localhost:3000
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+
+      - name: Ask Claude Code for locator fixes
+        id: claude
+        if: steps.heal.outputs.result == 'needs_claude'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          prompt: |
+            Read heal-report/claude-request.md and follow its instructions exactly.
+            Answer only through the structured output. Do not edit files or run commands.
+          claude_args: >-
+            --allowedTools Read
+            --max-turns 6
+            --json-schema '${{ steps.heal.outputs.schema }}'
+
+      - name: Apply Claude Code's fixes
+        id: heal_resume
+        if: steps.heal.outputs.result == 'needs_claude'
+        continue-on-error: true
+        run: node scripts/ci/heal-locators.cjs --resume --config playwright.config.ts
+        env:
+          CI: 'true'
+          DATABASE_URL: postgresql://flight_tracker:flight_tracker@localhost:5432/flight_tracker
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          FRONTEND_URL: http://localhost:3000
+          AERODATABOX_KEY: ${{ secrets.AERODATABOX_KEY }}
+          ADSB_CONTACT: ${{ vars.ADSB_CONTACT }}
+          CLAUDE_ANSWER: ${{ steps.claude.outputs.structured_output }}
+
+      - name: Upload healed locators
+        if: always() && steps.heal.outcome != 'skipped'
+        uses: actions/upload-artifact@v6
+        with:
+          name: healed-locators
+          path: heal-report/
+          retention-days: 14
+
+      # Healed: open a PR into develop with the verified fix, so nothing keeps depending on healing.
+      # Optional HEAL_PR_TOKEN (PAT) lets CI run on that PR; PRs from the default token start no workflows.
+      - name: Open heal PR into develop
+        if: always() && (steps.heal.outputs.result == 'healed' || steps.heal_resume.outputs.result == 'healed')
+        continue-on-error: true
+        run: node scripts/ci/open-heal-pr.cjs --source "UI regression" --summary heal-report/summary.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.HEAL_PR_TOKEN || github.token }}
+
+      - name: UI regression result
+        if: >-
+          steps.ui.outcome == 'failure' &&
+          steps.heal.outputs.result != 'healed' &&
+          steps.heal_resume.outputs.result != 'healed'
+        run: |
+          echo "::error::UI regression failed and not every failure could be healed — see the job summary."
+          exit 1
+
 # ─────────────────────────────────────────────────────────────────────────────
 # API Regression
 # ─────────────────────────────────────────────────────────────────────────────
   api-regression:
     name: Regression / API
     runs-on: ubuntu-latest
+    # contents/pull-requests: write let a healed run push a heal branch and open its PR.
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 20
 
     services:
@@ -197,6 +281,7 @@ jobs:
         run: npm run ci-heal
 
       - name: Re-run after healing
+        id: rerun
         if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome == 'success'
         working-directory: apps/qa-api-orchestrator
         run: |
@@ -204,6 +289,15 @@ jobs:
           npx playwright test tests/generated/ --config playwright.config.ts --output=reports/full-healed
         env:
           API_BASE_URL: http://localhost:3100
+
+      # Healed: open a PR into develop with the verified fix, so nothing keeps depending on healing.
+      # Optional HEAL_PR_TOKEN (PAT) lets CI run on that PR; PRs from the default token start no workflows.
+      - name: Open heal PR into develop
+        if: steps.rerun.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/ci/open-heal-pr.cjs --source "API regression" --summary apps/qa-api-orchestrator/reports/heal-summary.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.HEAL_PR_TOKEN || github.token }}
 
       - name: Fail if not auto-healable
         if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome != 'success'

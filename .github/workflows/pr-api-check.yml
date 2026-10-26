@@ -33,6 +33,10 @@ jobs:
   story-api-tests:
     name: Story API Tests
     runs-on: ubuntu-latest
+    # contents/pull-requests: write let a healed run push a heal branch and open its PR.
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 15
 
     services:
@@ -184,6 +188,7 @@ jobs:
         run: npm run ci-heal
 
       - name: Re-run after healing
+        id: rerun
         if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome == 'success'
         working-directory: apps/qa-api-orchestrator
         run: |
@@ -193,6 +198,15 @@ jobs:
             --output=reports/pr-results-healed
         env:
           API_BASE_URL: ${{ inputs.backend_mode == 'mock' && 'http://localhost:3199' || 'http://localhost:3100' }}
+
+      # Healed: open a PR into develop with the verified fix, so nothing keeps depending on healing.
+      # Optional HEAL_PR_TOKEN (PAT) lets CI run on that PR; PRs from the default token start no workflows.
+      - name: Open heal PR into develop
+        if: steps.rerun.outcome == 'success'
+        continue-on-error: true
+        run: node scripts/ci/open-heal-pr.cjs --source "Story API" --summary apps/qa-api-orchestrator/reports/heal-summary.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.HEAL_PR_TOKEN || github.token }}
 
       - name: Fail if not auto-healable
         if: steps.run_specs.outputs.status == 'fail' && steps.heal.outcome != 'success'

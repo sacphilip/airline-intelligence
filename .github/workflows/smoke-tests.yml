@@ -27,9 +27,9 @@ jobs:
     name: UI Smoke
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # pull-requests: write lets the locator healer comment on the PR.
+    # pull-requests: write lets the locator healer comment on the PR; contents: write lets it push a heal branch.
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -123,6 +123,15 @@ jobs:
           name: healed-locators
           path: heal-report/
           retention-days: 14
+
+      # Healed: open a PR into develop with the verified fix, so nothing keeps depending on healing.
+      # Optional HEAL_PR_TOKEN (PAT) lets CI run on that PR; PRs from the default token start no workflows.
+      - name: Open heal PR into develop
+        if: always() && (steps.heal.outputs.result == 'healed' || steps.heal_resume.outputs.result == 'healed')
+        continue-on-error: true
+        run: node scripts/ci/open-heal-pr.cjs --source "UI smoke" --summary heal-report/summary.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.HEAL_PR_TOKEN || github.token }}
 
       # The check passes only if the smoke tests passed, or every failure was healed and passed on re-run.
       - name: Smoke result
