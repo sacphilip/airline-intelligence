@@ -30,62 +30,57 @@ async function openRoute(flightSearch: FlightSearchPage, from = FROM, to = TO) {
   return body;
 }
 
-const panel = (page: FlightSearchPage['page']) => page.getByTestId('route-analytics');
-const rowIds = (page: FlightSearchPage['page']) =>
-  panel(page).locator('[data-testid^="route-airline-"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid')!.replace('route-airline-', '')));
-
 test.describe('US-009 — Compare airlines on a route', () => {
   test('TC-009-01: searching a route shows its analytics panel', async ({ flightSearch }) => {
     await openRoute(flightSearch);
-    await expect(panel(flightSearch.page)).toBeVisible();
-    await expect(flightSearch.page.getByTestId('route-analytics-route')).toHaveText(`${FROM} → ${TO}`);
+    await expect(flightSearch.analytics.panel).toBeVisible();
+    await expect(flightSearch.analytics.route).toHaveText(`${FROM} → ${TO}`);
   });
 
   test('TC-009-02: summary tiles show the backend figures, or the empty state', async ({ flightSearch }) => {
     const a = await openRoute(flightSearch);
-    const page = flightSearch.page;
+    const panel = flightSearch.analytics;
     if (a.summary.flights === 0) {
-      await expect(page.getByTestId('route-analytics-empty')).toBeVisible();
-      await expect(page.getByTestId('route-flights')).toHaveCount(0);
+      await expect(panel.empty).toBeVisible();
+      await expect(panel.flights).toHaveCount(0);
       return;
     }
-    await expect(page.getByTestId('route-flights')).toContainText(fmt(a.summary.flights));
-    await expect(page.getByTestId('route-avg-delay')).toContainText(mins(a.summary.avgDelay));
-    await expect(page.getByTestId('route-on-time')).toContainText(pct(a.summary.onTimePct));
-    await expect(page.getByTestId('route-cancellation')).toContainText(pct(a.summary.cancellationRate, 1));
+    await expect(panel.flights).toContainText(fmt(a.summary.flights));
+    await expect(panel.avgDelay).toContainText(mins(a.summary.avgDelay));
+    await expect(panel.onTime).toContainText(pct(a.summary.onTimePct));
+    await expect(panel.cancellation).toContainText(pct(a.summary.cancellationRate, 1));
   });
 
   test('TC-009-03: the data period matches the earliest flight counted', async ({ flightSearch }) => {
     const a = await openRoute(flightSearch);
     test.skip(a.since == null, 'No flights recorded on this route yet');
-    await expect(flightSearch.page.getByTestId('route-analytics-since')).toHaveText(`Based on flights since ${since(a.since)}`);
+    await expect(flightSearch.analytics.since).toHaveText(`Based on flights since ${since(a.since)}`);
   });
 
   test('TC-009-04: one row per scored airline, ranked by Reliability Score as the backend ranked them', async ({ flightSearch }) => {
     const a = await openRoute(flightSearch);
     test.skip(a.airlines.length === 0, `No airline has ${a.minFlights}+ completed flights on this route yet`);
-    await expect(panel(flightSearch.page).locator('[data-testid^="route-airline-"]')).toHaveCount(a.airlines.length);
-    expect(await rowIds(flightSearch.page)).toEqual(a.airlines.map((x: any) => x.iata));
+    await expect(flightSearch.analytics.airlineRows).toHaveCount(a.airlines.length);
+    expect(await flightSearch.analytics.rankedIatas()).toEqual(a.airlines.map((x: any) => x.iata));
   });
 
   test('TC-009-05: each airline row shows the backend values', async ({ flightSearch }) => {
     const a = await openRoute(flightSearch);
     test.skip(a.airlines.length === 0, `No airline has ${a.minFlights}+ completed flights on this route yet`);
+    const cell = (iata: string, col: number) => flightSearch.analytics.airlineCell(iata, col);
     for (const x of a.airlines) {
-      const row = flightSearch.page.getByTestId(`route-airline-${x.iata}`);
-      const cells = row.locator('td');
-      await expect(cells.nth(0)).toContainText(x.name ?? x.iata);
-      await expect(cells.nth(1)).toHaveText(fmt(x.flights));
-      await expect(cells.nth(2)).toHaveText(pct(x.onTimePct));
-      await expect(cells.nth(3)).toHaveText(mins(x.avgDelay));
-      await expect(cells.nth(4)).toHaveText(pct(x.cancellationRate, 1));
-      await expect(cells.nth(5)).toHaveText(String(x.score));
+      await expect(cell(x.iata, 0)).toContainText(x.name ?? x.iata);
+      await expect(cell(x.iata, 1)).toHaveText(fmt(x.flights));
+      await expect(cell(x.iata, 2)).toHaveText(pct(x.onTimePct));
+      await expect(cell(x.iata, 3)).toHaveText(mins(x.avgDelay));
+      await expect(cell(x.iata, 4)).toHaveText(pct(x.cancellationRate, 1));
+      await expect(cell(x.iata, 5)).toHaveText(String(x.score));
     }
   });
 
   test('TC-009-06: airlines without enough completed flights are listed separately, without a score', async ({ flightSearch }) => {
     const a = await openRoute(flightSearch);
-    const list = flightSearch.page.getByTestId('route-insufficient');
+    const list = flightSearch.analytics.insufficient;
     if (a.insufficient.length === 0) {
       await expect(list).toHaveCount(0);
       return;
@@ -93,7 +88,7 @@ test.describe('US-009 — Compare airlines on a route', () => {
     await expect(list).toContainText(`fewer than ${a.minFlights} completed flights`);
     for (const x of a.insufficient) {
       await expect(list).toContainText(`(${x.iata}) ${fmt(x.flights)} flight`);
-      await expect(flightSearch.page.getByTestId(`route-airline-${x.iata}`)).toHaveCount(0); // not in the ranked table
+      await expect(flightSearch.analytics.airlineRow(x.iata)).toHaveCount(0); // not in the ranked table
     }
   });
 
@@ -108,19 +103,19 @@ test.describe('US-009 — Compare airlines on a route', () => {
       return cmp !== 0 ? dir * cmp : (q.score - p.score) || (q.flights - p.flights);
     };
     const order = (dir: 1 | -1) => [...a.airlines].sort(byAvgDelay(dir)).map((x: any) => x.iata);
-    const header = panel(flightSearch.page).locator('th', { hasText: 'Avg delay' });
+    const header = flightSearch.analytics.sortHeader('Avg delay');
 
     await header.click();
-    await expect.poll(() => rowIds(flightSearch.page)).toEqual(order(1));
+    await expect.poll(() => flightSearch.analytics.rankedIatas()).toEqual(order(1));
     await header.click();
-    await expect.poll(() => rowIds(flightSearch.page)).toEqual(order(-1));
+    await expect.poll(() => flightSearch.analytics.rankedIatas()).toEqual(order(-1));
   });
 
   test('TC-009-08: clicking an airline opens its profile', async ({ flightSearch, page }) => {
     const a = await openRoute(flightSearch);
     test.skip(a.airlines.length === 0, `No airline has ${a.minFlights}+ completed flights on this route yet`);
     const iata = a.airlines[0].iata;
-    await flightSearch.page.getByTestId(`route-airline-${iata}`).click();
+    await flightSearch.analytics.airlineRow(iata).click();
     await expect(page).toHaveURL(new RegExp(`#airline/${iata}$`));
     await new AppPage(page).expectActiveTab('airline');
   });
@@ -129,7 +124,7 @@ test.describe('US-009 — Compare airlines on a route', () => {
     // Valid code format, but no airport uses it, so the backend has nothing recorded.
     const a = await openRoute(flightSearch, FROM, 'ZZZ');
     expect(a.summary.flights).toBe(0);
-    await expect(flightSearch.page.getByTestId('route-analytics-empty')).toContainText('No data for this route yet');
+    await expect(flightSearch.analytics.empty).toContainText('No data for this route yet');
   });
 
   test('TC-009-10: #route/BLR/DEL opens Find Flight in Route mode with the analytics', async ({ page }) => {
@@ -138,7 +133,7 @@ test.describe('US-009 — Compare airlines on a route', () => {
     await app.gotoViaHash(`route/${FROM}/${TO}`);
     expect((await response).status).toBe(200);
     await app.expectActiveTab('flight');
-    await expect(page.getByTestId('route-analytics-route')).toHaveText(`${FROM} → ${TO}`);
+    await expect(new FlightSearchPage(page).analytics.route).toHaveText(`${FROM} → ${TO}`);
   });
 });
 

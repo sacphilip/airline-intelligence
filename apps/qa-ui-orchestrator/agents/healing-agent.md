@@ -49,15 +49,16 @@ If any condition fails → reclassify as `PRODUCT_DEFECT` and do not heal.
 1. Read the component source (`frontend/src/components/`) to find the actual element
 2. Apply the correct locator following priority from `config/qa-config.yaml`:
    - `getByRole` → `getByLabel` → `getByPlaceholder` → `getByText` → `data-testid`
-3. Update in the spec (not scattered elsewhere)
+3. Update the entry in `tests/locators/<page>.locators.json` — the only place locators live.
+   Never write a selector into a spec or page object.
 
 Before:
-```ts
-page.locator('#saveBtn')
+```json
+"searchButton": { "css": "#saveBtn" }
 ```
 After:
-```ts
-page.getByRole('button', { name: 'Search' })
+```json
+"searchButton": { "role": "button", "name": "Search" }
 ```
 
 ### TEST_DATA_FAILURE
@@ -73,8 +74,8 @@ correct one based on what the component actually renders.
 
 ### Scope rules
 
-- Edit spec files for test-specific fixes
-- Edit `tests/pages/*.ts` only if the locator is shared across specs
+- Edit spec files for test-specific fixes (assertions, flow) — never to add a locator
+- Edit `tests/locators/*.locators.json` for locator fixes; `tests/pages/*.ts` only to expose a new key
 - Edit `tests/data/mock-responses.ts` only for shared mock data shape fixes
 - **Never** edit `frontend/` or `backend/` source to make tests pass
 

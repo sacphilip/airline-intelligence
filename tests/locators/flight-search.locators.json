@@ -1,0 +1,55 @@
+{
+  "numberModeButton":  { "role": "button", "name": { "regex": "Flight number", "flags": "i" } },
+  "routeModeButton":   { "role": "button", "name": { "regex": "Route", "flags": "i" } },
+  "flightNumberInput": { "placeholder": { "regex": "6E 5321", "flags": "i" } },
+  "fromInput":         { "placeholder": "From (BLR)" },
+  "toInput":           { "placeholder": "To (DEL)" },
+  "dateInput":         { "css": "input[type=\"date\"]", "first": true },
+  "searchButton":      { "role": "button", "name": "Search" },
+
+  "loadingText":       { "text": "Looking up flight…" },
+  "errorBanner":       { "css": "[class*=\"destructive\"]" },
+  "airportCodeError":  { "text": { "regex": "3–4 letter", "flags": "i" } },
+
+  "cardText":          { "text": "{{text}}", "exact": true, "first": true },
+  "airlineButton":     { "role": "button", "name": "{{name}}" },
+  "infoLabel":         { "text": "{{label}}", "exact": true, "first": true },
+  "infoValue": {
+    "within": {
+      "css": "div.px-3.py-3",
+      "filter": { "has": { "css": "span.font-bold", "filter": { "hasText": { "regex": "^{{label}}$" } } } },
+      "first": true
+    },
+    "css": "div.tabular-nums"
+  },
+  "statusPill": {
+    "within": {
+      "css": "div.px-4.py-3.flex-col",
+      "filter": { "has": { "css": "span", "filter": { "hasText": { "regex": "^Status$" } } } },
+      "first": true
+    },
+    "css": "span.rounded-full"
+  },
+  "statusDetail":      { "text": "· {{detail}}", "first": true },
+
+  "flightHistoryToggle": { "role": "button", "name": { "regex": "Flight history · last 7 days", "flags": "i" } },
+  "flightHistoryHeader": { "text": { "regex": "Flight history · last 7 days", "flags": "i" } },
+  "flightHistoryTable":  { "css": "table", "filter": { "hasText": { "regex": "Date", "flags": "i" } } },
+  "historyColumnHeader": { "within": "flightHistoryTable", "role": "columnheader", "name": "{{name}}" },
+  "historyRows":         { "within": "flightHistoryTable", "css": "tbody tr" },
+  "historyRow":          { "within": "flightHistoryTable", "css": "tbody tr", "nth": "{{row}}" },
+  "historyDelayCell":    { "within": "historyRow", "css": "td", "nth": 1 },
+  "noHistoryMessage":    { "text": "No history data available" },
+
+  "statsBar":  { "css": ".grid.grid-cols-4" },
+  "statValue": {
+    "within": { "within": "statsBar", "css": "div.rounded-xl", "filter": { "hasText": { "regex": "{{label}}$" } } },
+    "css": "div",
+    "first": true
+  },
+  "statusChip":    { "css": "button.rounded-full", "filter": { "hasText": { "regex": "^{{label}}\\s*\\d+$" } } },
+  "nonAllChip":    { "css": "button.rounded-full", "filter": { "hasNotText": { "regex": "^All" } }, "first": true },
+  "routeTable":    { "css": "table", "filter": { "has": { "css": "th", "filter": { "hasText": { "regex": "^Dep" } } } } },
+  "routeTableRows":{ "within": "routeTable", "css": "tbody tr" },
+  "routeRow":      { "within": "routeTable", "css": "tbody tr", "filter": { "hasText": "{{number}}" } }
+}

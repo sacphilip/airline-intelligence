@@ -49,16 +49,16 @@ test.describe('US-006 — Airline profile', () => {
 
   test('TC-006-03: lookup shows the airline name the backend returned', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
-    await expect(airlinePage.page.locator('div.text-xl').filter({ hasText: p.airline?.name ?? p.iata })).toBeVisible();
+    await expect(airlinePage.airlineName(p.airline?.name ?? p.iata)).toBeVisible();
   });
 
   test('TC-006-04: profile shows the reliability score, or "Not enough data"', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
     if (p.score != null) {
-      await expect(airlinePage.page.getByText(String(p.score), { exact: true }).first()).toBeVisible();
-      await expect(airlinePage.page.getByText('/100')).toBeVisible();
+      await expect(airlinePage.scoreValue(p.score)).toBeVisible();
+      await expect(airlinePage.scoreOutOf).toBeVisible();
     } else {
-      await expect(airlinePage.page.getByText('Not enough data')).toBeVisible();
+      await expect(airlinePage.notEnoughData).toBeVisible();
     }
   });
 
@@ -74,14 +74,14 @@ test.describe('US-006 — Airline profile', () => {
 
   test('TC-006-07: score breakdown appears exactly when the backend has a score', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
-    const heading = airlinePage.page.getByRole('heading', { name: 'Reliability score breakdown' });
+    const heading = airlinePage.scoreBreakdownHeading;
     if (p.score != null) await expect(heading).toBeVisible();
     else await expect(heading).toHaveCount(0);
   });
 
   test('TC-006-08: Delay analysis appears exactly when flights have been observed', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
-    const heading = airlinePage.page.getByText('Delay analysis');
+    const heading = airlinePage.delayAnalysis;
     if (p.observed > 0) await expect(heading).toBeVisible();
     else await expect(heading).toHaveCount(0);
   });
@@ -89,29 +89,29 @@ test.describe('US-006 — Airline profile', () => {
   test('TC-006-09: Routes section lists the backend\'s top routes', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
     test.skip(!p.topRoutes?.length, `No recorded routes for ${airline.iata} yet`);
-    await expect(airlinePage.page.getByRole('heading', { name: 'Routes' })).toBeVisible();
+    await expect(airlinePage.routesHeading).toBeVisible();
     const r = p.topRoutes[0];
-    await expect(airlinePage.page.getByText(`${r.from} → ${r.to}`).first()).toBeVisible();
+    await expect(airlinePage.routeLabel(r.from, r.to)).toBeVisible();
   });
 
   test('TC-006-10: Airports section lists the backend\'s top airports', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
     test.skip(!p.topAirports?.length, `No recorded airports for ${airline.iata} yet`);
-    await expect(airlinePage.page.getByText('Airports', { exact: true })).toBeVisible();
-    await expect(airlinePage.section('Airports')).toContainText(p.topAirports[0].iata);
+    await expect(airlinePage.airportsLabel).toBeVisible();
+    await expect(airlinePage.airportsSection).toContainText(p.topAirports[0].iata);
   });
 
   test('TC-006-11: Fleet section counts the aircraft the backend returned', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
     test.skip(!p.regs?.length, `No recorded aircraft for ${airline.iata} yet`);
-    await expect(airlinePage.page.getByRole('heading', { name: `Fleet · ${p.regs.length} aircraft` })).toBeVisible();
+    await expect(airlinePage.fleetHeading(p.regs.length)).toBeVisible();
   });
 
   test('TC-006-12: fleet section shows the backend\'s registration numbers', async ({ airlinePage }) => {
     const p = await lookup(airlinePage);
     test.skip(!p.regs?.length, `No recorded aircraft for ${airline.iata} yet`);
     for (const reg of p.regs.slice(0, 5)) {
-      await expect(airlinePage.page.getByText(reg, { exact: true })).toBeVisible();
+      await expect(airlinePage.registration(reg)).toBeVisible();
     }
   });
 
@@ -122,8 +122,9 @@ test.describe('US-006 — Airline profile', () => {
     await app.expectActiveTab('airline');
     const { status, body } = await response;
     expect(status).toBe(200);
-    await new AirlinePage(page).waitForProfile();
-    await expect(page.locator('div.text-xl').filter({ hasText: body.airline?.name ?? body.iata })).toBeVisible();
+    const airlinePage = new AirlinePage(page);
+    await airlinePage.waitForProfile();
+    await expect(airlinePage.airlineName(body.airline?.name ?? body.iata)).toBeVisible();
   });
 
   // The real backend answers an unknown airline with an empty profile (200), not an error.
@@ -132,9 +133,9 @@ test.describe('US-006 — Airline profile', () => {
     expect(p.airline, 'ZZ should not match a real airline').toBeNull();
     expect(p.observed).toBe(0);
 
-    await expect(airlinePage.page.locator('div.text-xl').filter({ hasText: TEST_DATA.unknownAirlineIata })).toBeVisible();
-    await expect(airlinePage.page.getByText('Not enough data')).toBeVisible();
-    await expect(airlinePage.page.getByText('Based on 0 observed flights')).toBeVisible();
+    await expect(airlinePage.airlineName(TEST_DATA.unknownAirlineIata)).toBeVisible();
+    await expect(airlinePage.notEnoughData).toBeVisible();
+    await expect(airlinePage.observedFlights(0)).toBeVisible();
     await expect(airlinePage.errorBanner).toHaveCount(0);
   });
 
@@ -148,7 +149,7 @@ test.describe('US-006 — Airline profile', () => {
     const { body } = await search;
     await flightSearch.waitForSearchComplete();
     const leg = body.legs[0];
-    await page.getByRole('button', { name: leg.airline.name }).click();
+    await flightSearch.airlineButton(leg.airline.name).click();
     await expect(page).toHaveURL(new RegExp(`#airline/${leg.airline.iata}$`));
     await app.expectActiveTab('airline');
   });

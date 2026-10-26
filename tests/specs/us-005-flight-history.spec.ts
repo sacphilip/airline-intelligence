@@ -48,7 +48,7 @@ test.describe('US-005 — Flight history', () => {
 
   test('TC-005-02: section header reads "Flight history · last 7 days"', async ({ flightSearch }) => {
     await searchWithHistory(flightSearch);
-    await expect(flightSearch.page.getByText(/Flight history · last 7 days/i)).toBeVisible();
+    await expect(flightSearch.flightHistoryHeader).toBeVisible();
   });
 
   test('TC-005-03: history shows a table or the no-data message, matching the backend', async ({ flightSearch }) => {
@@ -57,23 +57,22 @@ test.describe('US-005 — Flight history', () => {
       await expect(flightSearch.noHistoryMessage).toBeVisible();
       await expect(flightSearch.flightHistoryTable).toHaveCount(0);
     } else {
-      await expect(flightSearch.flightHistoryTable.getByRole('columnheader', { name: 'Date' })).toBeVisible();
-      await expect(flightSearch.flightHistoryTable.getByRole('columnheader', { name: 'Delay' })).toBeVisible();
+      await expect(flightSearch.historyColumnHeader('Date')).toBeVisible();
+      await expect(flightSearch.historyColumnHeader('Delay')).toBeVisible();
     }
   });
 
   test('TC-005-04: history table has one row per day the backend returned', async ({ flightSearch }) => {
     const rows = await searchWithHistory(flightSearch);
     test.skip(rows.length === 0, `No recorded history for ${flightNumber} yet`);
-    await expect(flightSearch.flightHistoryTable.locator('tbody tr')).toHaveCount(rows.length);
+    await expect(flightSearch.historyRows).toHaveCount(rows.length);
   });
 
   test('TC-005-05: each row shows the delay, "On time" or "Cancelled" from the backend', async ({ flightSearch }) => {
     const rows = await searchWithHistory(flightSearch);
     test.skip(rows.length === 0, `No recorded history for ${flightNumber} yet`);
-    const bodyRows = flightSearch.flightHistoryTable.locator('tbody tr');
     for (const [i, r] of rows.entries()) {
-      await expect(bodyRows.nth(i).locator('td').nth(1)).toHaveText(delayLabel(r));
+      await expect(flightSearch.historyDelayCell(i)).toHaveText(delayLabel(r));
     }
   });
 
@@ -81,14 +80,14 @@ test.describe('US-005 — Flight history', () => {
     const rows = await searchWithHistory(flightSearch);
     const i = rows.findIndex((r) => !r.cancelled && (r.delay ?? 0) > 0);
     test.skip(i < 0, `No delayed day in ${flightNumber}'s recorded history`);
-    await expect(flightSearch.flightHistoryTable.locator('tbody tr').nth(i)).toContainText(`+${rows[i].delay} min`);
+    await expect(flightSearch.historyRow(i)).toContainText(`+${rows[i].delay} min`);
   });
 
   test('TC-005-07: a cancelled day shows "Cancelled"', async ({ flightSearch }) => {
     const rows = await searchWithHistory(flightSearch);
     const i = rows.findIndex((r) => r.cancelled);
     test.skip(i < 0, `No cancelled day in ${flightNumber}'s recorded history`);
-    await expect(flightSearch.flightHistoryTable.locator('tbody tr').nth(i)).toContainText('Cancelled');
+    await expect(flightSearch.historyRow(i)).toContainText('Cancelled');
   });
 
   test('TC-005-08: clicking toggle collapses history section', async ({ flightSearch }) => {

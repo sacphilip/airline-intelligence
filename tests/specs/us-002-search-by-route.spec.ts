@@ -23,16 +23,12 @@ async function searchRoute(flightSearch: FlightSearchPage) {
   return body.flights as any[];
 }
 
-/** The filter chip for a status; the label and count are separate spans. */
-const chip = (flightSearch: FlightSearchPage, label: string) =>
-  flightSearch.page.locator('button.rounded-full').filter({ hasText: new RegExp(`^${label}\\s*\\d+$`) });
-
 test.describe('US-002 — Search by route', () => {
   test('TC-002-01: route mode shows From, To, and date inputs', async ({ flightSearch }) => {
     await flightSearch.selectRouteMode();
     await expect(flightSearch.fromInput).toBeVisible();
     await expect(flightSearch.toInput).toBeVisible();
-    await expect(flightSearch.page.locator('input[type="date"]')).toBeVisible();
+    await expect(flightSearch.dateInput).toBeVisible();
   });
 
   test('TC-002-02: route table has one row per flight the backend returned', async ({ flightSearch }) => {
@@ -42,20 +38,18 @@ test.describe('US-002 — Search by route', () => {
 
   test('TC-002-03: stats bar totals match the backend data', async ({ flightSearch }) => {
     const flights = await searchRoute(flightSearch);
-    const stat = (label: string) =>
-      flightSearch.statsBar.locator('div.rounded-xl').filter({ hasText: new RegExp(`${label}$`) }).locator('div').first();
 
     await expect(flightSearch.statsBar).toBeVisible();
-    await expect(stat('Total')).toHaveText(String(flights.length));
-    await expect(stat('Delayed')).toHaveText(String(flights.filter(isDelayed).length));
-    await expect(stat('Cancelled')).toHaveText(String(flights.filter((f) => f.status === 'Canceled' || f.status === 'CanceledUncertain').length));
+    await expect(flightSearch.statValue('Total')).toHaveText(String(flights.length));
+    await expect(flightSearch.statValue('Delayed')).toHaveText(String(flights.filter(isDelayed).length));
+    await expect(flightSearch.statValue('Cancelled')).toHaveText(String(flights.filter((f) => f.status === 'Canceled' || f.status === 'CanceledUncertain').length));
   });
 
   test('TC-002-04: Delayed chip appears only when the backend reports delayed flights', async ({ flightSearch }) => {
     const flights = await searchRoute(flightSearch);
     const delayed = flights.filter(isDelayed).length;
-    if (delayed > 0) await expect(chip(flightSearch, 'Delayed')).toHaveText(new RegExp(`^Delayed\\s*${delayed}$`));
-    else await expect(chip(flightSearch, 'Delayed')).toHaveCount(0);
+    if (delayed > 0) await expect(flightSearch.statusChip('Delayed')).toHaveText(new RegExp(`^Delayed\\s*${delayed}$`));
+    else await expect(flightSearch.statusChip('Delayed')).toHaveCount(0);
   });
 
   test('TC-002-05: clicking Delayed filter shows only the delayed flights', async ({ flightSearch }) => {
@@ -63,16 +57,15 @@ test.describe('US-002 — Search by route', () => {
     const delayed = flights.filter(isDelayed).length;
     test.skip(delayed === 0, 'No delayed flights on this route right now, so there is no Delayed filter to click');
 
-    await chip(flightSearch, 'Delayed').click();
+    await flightSearch.statusChip('Delayed').click();
     await expect(flightSearch.routeTableRows).toHaveCount(delayed);
   });
 
   test('TC-002-06: clicking All filter restores all rows', async ({ flightSearch }) => {
     const flights = await searchRoute(flightSearch);
     // Narrow with any chip that has rows, then go back to All.
-    const other = flightSearch.page.locator('button.rounded-full').filter({ hasNotText: /^All/ }).first();
-    if (await other.count()) await other.click();
-    await chip(flightSearch, 'All').click();
+    if (await flightSearch.nonAllChip.count()) await flightSearch.nonAllChip.click();
+    await flightSearch.statusChip('All').click();
     await expect(flightSearch.routeTableRows).toHaveCount(flights.length);
   });
 
@@ -83,13 +76,13 @@ test.describe('US-002 — Search by route', () => {
     await flightSearch.searchButton.click();
 
     await expect(flightSearch.errorBanner).toBeVisible();
-    await expect(flightSearch.page.getByText(/3–4 letter/i)).toBeVisible();
+    await expect(flightSearch.airportCodeError).toBeVisible();
   });
 
   test('TC-002-08: route rows show the flight numbers and airline names from the backend', async ({ flightSearch }) => {
     const flights = await searchRoute(flightSearch);
     const first = flights.find((f) => f.number && f.airline?.name)!;
-    const row = flightSearch.routeTableRows.filter({ hasText: first.number });
+    const row = flightSearch.routeRow(first.number);
     await expect(row.first()).toBeVisible();
     await expect(row.first()).toContainText(first.airline.name);
   });

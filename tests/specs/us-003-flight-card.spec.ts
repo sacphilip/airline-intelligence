@@ -47,7 +47,7 @@ function expectedCells(leg: any) {
 test.describe('US-003 — Flight card', () => {
   test('TC-003-01: FlightCard shows the flight number from the backend', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
-    await expect(flightSearch.page.getByText(leg.number, { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.cardText(leg.number)).toBeVisible();
   });
 
   for (const label of ['STD', 'ETD', 'STA', 'ETA', 'Delay'] as const) {
@@ -59,25 +59,25 @@ test.describe('US-003 — Flight card', () => {
 
   test('TC-003-07: FlightCard shows Status label', async ({ flightSearch }) => {
     await search(flightSearch);
-    await expect(flightSearch.page.getByText('Status', { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.infoLabel('Status')).toBeVisible();
   });
 
   test('TC-003-08: status badge matches the live status and its detail', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
     const expected = flightStatus(leg);
     await expect(flightSearch.statusPill).toContainText(expected.text);
-    if (expected.detail) await expect(flightSearch.page.getByText(`· ${expected.detail}`).first()).toBeVisible();
+    if (expected.detail) await expect(flightSearch.statusDetail(expected.detail)).toBeVisible();
   });
 
   test('TC-003-09: FlightCard shows origin and destination airport codes', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
-    await expect(flightSearch.page.getByText(airportCode(leg.origin.airport), { exact: true }).first()).toBeVisible();
-    await expect(flightSearch.page.getByText(airportCode(leg.destination.airport), { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.cardText(airportCode(leg.origin.airport))).toBeVisible();
+    await expect(flightSearch.cardText(airportCode(leg.destination.airport))).toBeVisible();
   });
 
   test('TC-003-10: clicking airline name navigates to #airline/{iata}', async ({ flightSearch, app }) => {
     const leg = await search(flightSearch);
-    await flightSearch.page.getByRole('button', { name: leg.airline.name }).click();
+    await flightSearch.airlineButton(leg.airline.name).click();
     await expect(flightSearch.page).toHaveURL(new RegExp(`#airline/${leg.airline.iata}$`));
     await app.expectActiveTab('airline');
   });

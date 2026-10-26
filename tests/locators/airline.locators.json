@@ -1,0 +1,24 @@
+{
+  "iataInput":    { "placeholder": { "regex": "IATA code", "flags": "i" } },
+  "searchButton": { "role": "button", "name": "Search" },
+
+  "loadingText":   { "text": "Loading airline profile…" },
+  "errorBanner":   { "css": "[class*=\"destructive\"]" },
+  "notEnoughData": { "text": "Not enough data" },
+  "scoreOrEmpty":  { "text": { "regex": "\\/100" }, "or": "notEnoughData" },
+  "scoreOutOf":    { "text": "/100" },
+  "scoreValue":    { "text": "{{score}}", "exact": true, "first": true },
+  "observedFlights": { "text": "Based on {{count}} observed flights" },
+
+  "airlineName":     { "css": "div.text-xl", "filter": { "hasText": "{{name}}" } },
+  "overviewSection": { "css": ".rounded-xl.border", "filter": { "hasText": { "regex": "\\/100|Not enough" } } },
+
+  "scoreBreakdownHeading": { "role": "heading", "name": "Reliability score breakdown" },
+  "delayAnalysis":         { "text": "Delay analysis" },
+  "routesHeading":         { "role": "heading", "name": "Routes" },
+  "routeLabel":            { "text": "{{from}} → {{to}}", "first": true },
+  "airportsLabel":         { "text": "Airports", "exact": true },
+  "airportsSection":       { "css": "section", "filter": { "has": "airportsLabel" } },
+  "fleetHeading":          { "role": "heading", "name": "Fleet · {{count}} aircraft" },
+  "registration":          { "text": "{{reg}}", "exact": true }
+}

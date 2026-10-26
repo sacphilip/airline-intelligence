@@ -1,0 +1,16 @@
+{
+  "panel":         { "testId": "route-analytics" },
+  "route":         { "testId": "route-analytics-route" },
+  "since":         { "testId": "route-analytics-since" },
+  "empty":         { "testId": "route-analytics-empty" },
+  "flights":       { "testId": "route-flights" },
+  "avgDelay":      { "testId": "route-avg-delay" },
+  "onTime":        { "testId": "route-on-time" },
+  "cancellation":  { "testId": "route-cancellation" },
+  "airlinesTable": { "testId": "route-airlines-table" },
+  "insufficient":  { "testId": "route-insufficient" },
+  "airlineRows":   { "within": "panel", "css": "[data-testid^=\"route-airline-\"]" },
+  "airlineRow":    { "testId": "route-airline-{{iata}}" },
+  "airlineCell":   { "within": "airlineRow", "css": "td", "nth": "{{col}}" },
+  "sortHeader":    { "within": "panel", "css": "th", "filter": { "hasText": "{{column}}" } }
+}

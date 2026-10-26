@@ -14,24 +14,8 @@ const ORCH_DIR     = resolve(process.cwd());
 const PROJECT_ROOT = resolve(ORCH_DIR, '../..');
 const CTX          = join(ORCH_DIR, 'workflows/execution-context.json');
 
-// ── Locator table (from agents/automation-agent.md) ──────────────────────────
-
-const LOCATORS: Record<string, string> = {
-  tabFlight:      `page.getByRole('button', { name: /Find Flight/i })`,
-  tabAirline:     `page.getByRole('button', { name: /Airlines/i })`,
-  tabDelays:      `page.getByRole('button', { name: /Delays/i })`,
-  tabMap:         `page.getByRole('button', { name: /Live Map/i })`,
-  flightNumInput: `page.getByPlaceholder(/6E 5321/i)`,
-  fromInput:      `page.getByPlaceholder('From (BLR)')`,
-  toInput:        `page.getByPlaceholder('To (DEL)')`,
-  dateInput:      `page.locator('input[type="date"]').first()`,
-  searchButton:   `page.getByRole('button', { name: 'Search' })`,
-  iataInput:      `page.getByPlaceholder(/IATA code/i)`,
-  errorBanner:    `page.locator('[class*="destructive"]')`,
-  historyToggle:  `page.getByRole('button', { name: /Flight history/i })`,
-};
-
-// No API mocks: generated tests run against the real backend.
+// Generated specs never contain selectors: they use the page objects in tests/pages/, whose
+// locators live in tests/locators/*.locators.json. No API mocks: tests run against the real backend.
 
 // ── Detect primary tab from story content ────────────────────────────────────
 
@@ -45,42 +29,37 @@ function detectTab(storyContent: string): string {
 
 // ── Template per test case type ──────────────────────────────────────────────
 
+// The `app` fixture has already opened '/'.
 function buildTestBody(tc: any, tab: string): string[] {
   const lines: string[] = [];
-  const tabLabel = tab === 'airline' ? 'Airlines' : tab === 'delays' ? 'Delays' : tab === 'map' ? 'Live Map' : 'Find Flight';
 
   switch ((tc.type ?? 'Functional').toLowerCase()) {
     case 'negative':
-      lines.push(`  await page.goto('/');`);
-      lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
+      lines.push(`  await app.navigateTo('${tab}');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — observe what error state renders`);
-      lines.push(`  await expect(page.getByRole('button', { name: '${tabLabel}' })).toBeVisible();`);
+      lines.push(`  await app.expectActiveTab('${tab}');`);
       break;
 
     case 'ui':
-      lines.push(`  await page.goto('/');`);
-      lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
+      lines.push(`  await app.navigateTo('${tab}');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — observe exact UI state and add assertions`);
       break;
 
     case 'state':
     case 'role':
-      lines.push(`  await page.goto('/');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — test state transition or hash routing`);
-      lines.push(`  await expect(page).toHaveURL('/');`);
+      lines.push(`  await expect(app.page).toHaveURL('/');`);
       break;
 
     case 'boundary':
-      lines.push(`  await page.goto('/');`);
-      lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
+      lines.push(`  await app.navigateTo('${tab}');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — test boundary values and observe validation`);
       break;
 
     default: // Functional
-      lines.push(`  await page.goto('/');`);
-      lines.push(`  await page.getByRole('button', { name: '${tabLabel}' }).click();`);
+      lines.push(`  await app.navigateTo('${tab}');`);
       lines.push(`  // TODO: [MCP-ENRICH] ${tc.scenario} — navigate, interact and verify result`);
-      lines.push(`  await expect(page.getByRole('button', { name: '${tabLabel}' })).toBeVisible();`);
+      lines.push(`  await app.expectActiveTab('${tab}');`);
   }
   return lines;
 }
@@ -120,8 +99,9 @@ const lines: string[] = [
   `/**`,
   ` * ${storyId} — generated base spec`,
   ` * Deterministic scaffold — enrich with Playwright MCP (look for TODO: [MCP-ENRICH])`,
+  ` * Locators: add them to tests/locators/*.locators.json and use them through a page object.`,
   ` */`,
-  `import { test, expect } from '@playwright/test';`,
+  `import { test, expect } from '../fixtures/test.fixture';`,
   ``,
   `test.describe('${storyId}', () => {`,
 ];
@@ -129,7 +109,7 @@ const lines: string[] = [
 for (const tc of automatable) {
   lines.push(``);
   lines.push(`  // ${tc.requirement ?? ''} — ${tc.type ?? 'Functional'}`);
-  lines.push(`  test(${JSON.stringify(`${tc.id}: ${tc.scenario}`)}, async ({ page }) => {`);
+  lines.push(`  test(${JSON.stringify(`${tc.id}: ${tc.scenario}`)}, async ({ app }) => {`);
   for (const bl of buildTestBody(tc, tab)) lines.push(bl);
   lines.push(`  });`);
 }

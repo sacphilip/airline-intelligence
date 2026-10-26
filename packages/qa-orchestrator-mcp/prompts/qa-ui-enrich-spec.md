@@ -21,6 +21,12 @@ For each stub:
 Reuse what `qa_ui_scan_framework` found: page objects, fixtures and test data, rather than
 writing new locators inline.
 
+Never write a selector (`getByRole`, `getByText`, `locator(...)`, …) in a spec or page object.
+Specs call page objects; page objects read their locators from the project's locator JSON files
+(`tests/locators/<page>.locators.json`, entry format documented in `tests/support/locators.ts`).
+For a new element, add an entry to the JSON file of the page it belongs to and expose it from
+that page object.
+
 ## Locator priority
 
 1. `getByRole` 2. `getByLabel` 3. `getByPlaceholder` 4. `getByText` (with `{ exact: true }` for
