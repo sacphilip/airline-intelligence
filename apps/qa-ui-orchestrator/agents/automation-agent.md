@@ -43,22 +43,32 @@ Open the generated spec. For every `// TODO: [MCP-ENRICH]` comment:
 4. `getByText` — visible text (add `{ exact: true }` for short strings to avoid strict-mode violations)
 5. `data-testid` — only when semantic locators are unavailable
 
-### Known locators for this project
+### Where locators live
 
-| Element | Locator |
-|---|---|
-| Tab button | `page.getByRole('button', { name: 'Find Flight' })` |
-| Flight number input | `page.getByPlaceholder(/6E 5321/i)` |
-| Route From input | `page.getByPlaceholder('From (BLR)')` |
-| Route To input | `page.getByPlaceholder('To (DEL)')` |
-| Date input | `page.locator('input[type="date"]').first()` |
-| Search button | `page.getByRole('button', { name: 'Search' })` |
-| Airline IATA input | `page.getByPlaceholder(/IATA code/i)` |
-| Error banner | `page.locator('[class*="destructive"]')` |
-| Active tab | `expect(button).toHaveAttribute('aria-selected', 'true')` |
+Locators are never written in a spec or a page object. Every locator is an entry in
+`tests/locators/<page>.locators.json`, and the page object in `tests/pages/` exposes it
+(`frameworkDiscovery.existingLocators` lists every file and key):
+
+```json
+"searchButton": { "role": "button", "name": "Search" },
+"airlineRow":   { "testId": "route-airline-{{iata}}" }
+```
+
+```ts
+get searchButton() { return this.loc.get('searchButton'); }
+airlineRow(iata: string) { return this.loc.get('airlineRow', { iata }); }
+```
+
+The entry format (`role`/`text`/`placeholder`/`label`/`testId`/`css`, plus `within`, `filter`,
+`or`, `nth`/`first`/`last`, `{{param}}` and `{ "regex", "flags" }`) is documented at the top of
+`tests/support/locators.ts`. Reuse an existing key when one fits; otherwise add the entry to
+the JSON file of the page it belongs to, and a getter or method to that page object. A new
+page or component gets its own JSON file and page object.
 
 ### Rules
 - Read the component source (`frontend/src/components/`) before writing locators — never guess
+- No `page.getByRole/getByText/locator(...)` in specs or page objects — specs call page objects,
+  page objects read `tests/locators/*.locators.json`
 - Use the real backend; no `page.route()` mocks. Flight data is live, so assert on the response the
   page actually received (`captureApi()` in `tests/support/live.ts` captures it) rather than fixed values
 - A state the real backend can't produce on demand (e.g. a 500) is not faked: leave the test as

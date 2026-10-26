@@ -218,19 +218,20 @@ function quoteLike(original, value) {
   return `${q}${body}${q}`;
 }
 
-function listTsFiles(dir) {
+/** Test sources, including the tests/locators/*.json files where locators are defined. */
+function listSourceFiles(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
-    if (e.isDirectory()) return e.name === 'node_modules' ? [] : listTsFiles(p);
-    return /\.(ts|js|mjs|cjs)$/.test(e.name) ? [p] : [];
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : listSourceFiles(p);
+    return /\.(ts|js|mjs|cjs|json)$/.test(e.name) ? [p] : [];
   });
 }
 
 /**
  * Find where the drifted value lives: first the locator call itself in the failing file,
- * then (for shared locator maps / page objects) the bare string literal — but only if it
- * occurs exactly once across those folders, so the edit can't land somewhere unrelated.
+ * then (for the locator JSON files and page objects) the bare string literal — but only if
+ * it occurs exactly once across those folders, so the edit can't land somewhere unrelated.
  */
 function locateSource(loc, failure, opts) {
   const callStart = { getByRole: String.raw`getByRole\(\s*['"\`]${escapeRe(loc.role ?? '')}['"\`]\s*,\s*\{[^}]*?name:\s*`, getByText: String.raw`getByText\(\s*`, getByPlaceholder: String.raw`getByPlaceholder\(\s*`, getByLabel: String.raw`getByLabel\(\s*` }[loc.method];
@@ -243,7 +244,7 @@ function locateSource(loc, failure, opts) {
       if (hits.length) return { file, literal: lit, mode: 'call', count: hits.length, re };
     }
   }
-  const shared = ['locators', 'pages', 'support', 'fixtures'].flatMap((d) => listTsFiles(path.join(opts.root, opts.testsDir, d)));
+  const shared = ['locators', 'pages', 'support', 'fixtures'].flatMap((d) => listSourceFiles(path.join(opts.root, opts.testsDir, d)));
   const found = [];
   for (const f of shared) {
     const src = fs.readFileSync(f, 'utf-8');
@@ -299,6 +300,7 @@ function validClaudeEdit(edit, opts) {
   const src = fs.readFileSync(abs, 'utf-8');
   const n = src.split(edit.find).length - 1;
   if (n !== 1) return `the text to replace occurs ${n} times in ${edit.file}, expected exactly once`;
+  if (abs.endsWith('.json')) return validJsonLocatorEdit(edit, src);
   const isLocatorMap = /[\\/](locators|pages)[\\/]/.test(abs);
   if (pickCount(edit.replace) > pickCount(edit.find)) {
     return 'edit adds .first()/.last()/.nth(), which hides an ambiguous locator instead of fixing it';
@@ -308,6 +310,24 @@ function validClaudeEdit(edit, opts) {
   }
   if (isLocatorMap && edit.find.replace(/(['"`]).*?\1/g, '""') !== edit.replace.replace(/(['"`]).*?\1/g, '""')) {
     return 'in locator/page files only string values may change';
+  }
+  return null;
+}
+
+// In tests/locators/*.json an edit may change values, and add or drop "exact" / "within"
+// to make an ambiguous locator specific. Any other key change is not a locator fix, and
+// "first" / "last" / "nth" would hide the ambiguity like .first() does in code.
+const SCOPING_KEYS = new Set(['exact', 'within']);
+const jsonKeys = (line) => [...line.matchAll(/"((?:[^"\\]|\\.)*)"\s*:/g)].map((m) => m[1]).filter((k) => !SCOPING_KEYS.has(k)).sort().join(',');
+
+function validJsonLocatorEdit(edit, src) {
+  if (jsonKeys(edit.find) !== jsonKeys(edit.replace)) {
+    return 'in locator JSON files only values may change (plus "exact" or "within" to make a locator specific)';
+  }
+  try {
+    JSON.parse(src.replace(edit.find, edit.replace));
+  } catch (err) {
+    return `the edit leaves ${edit.file} invalid JSON (${err.message})`;
   }
   return null;
 }
@@ -354,11 +374,13 @@ const CLAUDE_INSTRUCTIONS =
   'Only change locators: never change assertions, expected values, test steps or logic. ' +
   'If the page no longer has the element at all, or the failure is not about finding an element, the verdict is not_drift with no edits. ' +
   'A locator that matched several elements needs a more specific locator for the one element the test means (e.g. scope it to its container, or add exact: true) — never .first()/.nth() just to silence the error. ' +
-  'Each edit replaces one complete line copied exactly from the file. Prefer getByRole, then getByLabel, getByPlaceholder, getByText.';
+  'Locators are defined only in tests/locators/*.locators.json (built by tests/support/locators.ts); page objects and specs refer to them by key. ' +
+  'Fix a drifted locator by editing its entry in that JSON file, never by writing a selector into a spec or page object. ' +
+  'Each edit replaces one complete line copied exactly from the file. Prefer role, then label, placeholder, text.';
 
 /** Everything Claude needs about each failure, as markdown. */
 function buildCases(failures, opts) {
-  const shared = ['locators', 'pages'].flatMap((d) => listTsFiles(path.join(opts.root, opts.testsDir, d)))
+  const shared = ['locators', 'pages'].flatMap((d) => listSourceFiles(path.join(opts.root, opts.testsDir, d)))
     .map((p) => `--- ${posix(path.relative(opts.root, p))}\n${fs.readFileSync(p, 'utf-8')}`).join('\n');
   const cases = failures.map((f) => {
     const abs = path.join(opts.root, f.file);
@@ -367,7 +389,7 @@ function buildCases(failures, opts) {
     const excerpt = src.slice(from, (f.line ?? 1) + 10).map((l, i) => `${String(from + i + 1).padStart(4)} | ${l}`).join('\n');
     return `## Test: ${f.title}\nFile: ${f.file}:${f.line ?? '?'}\n\n### Error\n${f.message.slice(0, 3000)}\n\n### Page snapshot at failure (ARIA)\n${(f.snapshot ?? '(none)').slice(0, 12000)}\n\n### Source around the failure\n${excerpt}`;
   });
-  return `${cases.join('\n\n')}\n\n## Shared locator / page-object files\n${shared.slice(0, 20000)}`;
+  return `${cases.join('\n\n')}\n\n## Locator JSON files and page objects\n${shared.slice(0, 20000)}`;
 }
 
 /** Route 1: the Messages API through the SDK (needs ANTHROPIC_API_KEY with API credit). */

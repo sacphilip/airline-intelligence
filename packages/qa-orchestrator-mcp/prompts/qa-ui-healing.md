@@ -20,8 +20,9 @@ If any fails, reclassify the failure as `PRODUCT_DEFECT` (`qa_ui_update_failures
 ## By classification
 
 - **LOCATOR_FAILURE** — find the real element in the source or a `browser_snapshot`; use the
-  locator priority (role → label → placeholder → text → test id). Fix shared page objects
-  only when the locator is shared.
+  locator priority (role → label → placeholder → text → test id). Fix the entry in the locator
+  JSON file (`tests/locators/<page>.locators.json`); never write a selector into a spec or
+  page object.
 - **TEST_DATA_FAILURE** — fix the test's data or expectations to match correct app output.
 - **TEST_DEFECT** — fix the wrong assertion or flow; replace, don't delete.
 

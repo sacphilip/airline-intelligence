@@ -1,0 +1,13 @@
+{
+  "body":         { "css": "body" },
+  "appTitle":     { "text": "Flight Tracker" },
+  "nav":          { "css": "nav" },
+  "tabMap":       { "within": "nav", "role": "button", "name": "Live Map" },
+  "tabFlight":    { "within": "nav", "role": "button", "name": "Find Flight" },
+  "tabDelays":    { "within": "nav", "role": "button", "name": "Delays" },
+  "tabAirline":   { "within": "nav", "role": "button", "name": "Airlines" },
+  "themeToggle":  { "css": "button[title*=\"mode\"]" },
+  "userName":     { "text": "{{name}}" },
+  "logInLink":    { "role": "link", "name": "Log in" },
+  "logOutButton": { "role": "button", "name": "Log out" }
+}

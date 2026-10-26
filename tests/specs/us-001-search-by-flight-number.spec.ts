@@ -42,23 +42,23 @@ test.describe('US-001 — Search by flight number', () => {
 
   // AC-02 — form structure
   test('TC-001-02: mode toggle and flight number input are visible', async ({ flightSearch }) => {
-    await expect(flightSearch.page.getByRole('button', { name: /Flight number/i })).toBeVisible();
-    await expect(flightSearch.page.getByRole('button', { name: /Route/i })).toBeVisible();
+    await expect(flightSearch.numberModeButton).toBeVisible();
+    await expect(flightSearch.routeModeButton).toBeVisible();
     await expect(flightSearch.flightNumberInput).toBeVisible();
   });
 
   // AC-03 — happy path
   test('TC-001-03: a real flight number returns a FlightCard with its number and airline', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
-    await expect(flightSearch.page.getByText(leg.number, { exact: true }).first()).toBeVisible();
-    await expect(flightSearch.page.getByRole('button', { name: leg.airline.name })).toBeVisible();
+    await expect(flightSearch.cardText(leg.number)).toBeVisible();
+    await expect(flightSearch.airlineButton(leg.airline.name)).toBeVisible();
   });
 
   // AC-03 — airport codes
   test('TC-001-04: FlightCard shows the origin and destination the backend returned', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
-    await expect(flightSearch.page.getByText(airportCode(leg.origin.airport), { exact: true }).first()).toBeVisible();
-    await expect(flightSearch.page.getByText(airportCode(leg.destination.airport), { exact: true }).first()).toBeVisible();
+    await expect(flightSearch.cardText(airportCode(leg.origin.airport))).toBeVisible();
+    await expect(flightSearch.cardText(airportCode(leg.destination.airport))).toBeVisible();
   });
 
   // AC-04 — status mapping
@@ -72,7 +72,7 @@ test.describe('US-001 — Search by flight number', () => {
   test('TC-001-06: FlightCard shows all six info cells: STD, ETD, STA, ETA, Delay, Status', async ({ flightSearch }) => {
     await search(flightSearch);
     for (const label of ['STD', 'ETD', 'STA', 'ETA', 'Delay', 'Status']) {
-      await expect(flightSearch.page.getByText(label, { exact: true }).first()).toBeVisible();
+      await expect(flightSearch.infoLabel(label)).toBeVisible();
     }
   });
 
@@ -111,14 +111,15 @@ test.describe('US-001 — Search by flight number', () => {
 
     const { status, body } = await response;
     expect(status).toBe(200);
-    await new FlightSearchPage(page).waitForSearchComplete();
-    await expect(page.getByText(body.legs[0].number, { exact: true }).first()).toBeVisible();
+    const flightSearch = new FlightSearchPage(page);
+    await flightSearch.waitForSearchComplete();
+    await expect(flightSearch.cardText(body.legs[0].number)).toBeVisible();
   });
 
   // ST-02 — airline name click
   test('TC-001-12: clicking airline name on FlightCard navigates to #airline/{iata}', async ({ flightSearch }) => {
     const leg = await search(flightSearch);
-    await flightSearch.page.getByRole('button', { name: leg.airline.name }).click();
+    await flightSearch.airlineButton(leg.airline.name).click();
     await expect(flightSearch.page).toHaveURL(new RegExp(`#airline/${leg.airline.iata}$`));
   });
 });

@@ -36,9 +36,16 @@ function classNames(dir: string): string[] {
 }
 
 const pagesDir    = join(PROJECT_ROOT, 'tests/pages');
+const locatorsDir = join(PROJECT_ROOT, 'tests/locators');
 const fixtureFile = join(PROJECT_ROOT, 'tests/fixtures/test.fixture.ts');
 const dataDir     = join(PROJECT_ROOT, 'tests/data');
 const specsDir    = join(PROJECT_ROOT, 'tests/specs');
+
+// Every locator lives in tests/locators/*.locators.json; list each file with its keys.
+const locatorFiles = files(locatorsDir, '.locators.json').map(f => ({
+  file: `tests/locators/${f}`,
+  keys: Object.keys(JSON.parse(readFileSync(join(locatorsDir, f), 'utf-8'))),
+}));
 
 const pages    = classNames(pagesDir);
 const fixtures = exportedNames(fixtureFile).filter(n => !['test', 'expect', 'base'].includes(n));
@@ -63,6 +70,7 @@ if (fixtures.includes('airlinePage'))   reusable.push('airlinePage fixture (test
 
 ctx.frameworkDiscovery = {
   existingPages:        pages.map(p => `${p} (tests/pages/${p}.ts)`),
+  existingLocators:     locatorFiles.map(l => `${l.file}: ${l.keys.join(', ')}`),
   existingFixtures:     fixtures.map(f => `${f} fixture`),
   existingMockData:     mockData,
   existingSpecs:        specs,
@@ -75,6 +83,7 @@ writeFileSync(CTX, JSON.stringify(ctx, null, 2));
 
 console.log(`\n[framework-scanner] Discovered framework for ${ctx.storyId}\n`);
 console.log(`  Pages:    ${pages.join(', ')}`);
+console.log(`  Locators: ${locatorFiles.map(l => `${l.file} (${l.keys.length})`).join(', ')}`);
 console.log(`  Fixtures: ${fixtures.join(', ')}`);
 console.log(`  Specs:    ${specs.length} existing`);
 if (specExists) console.log(`  ⚠ Spec already exists: ${specExists}`);

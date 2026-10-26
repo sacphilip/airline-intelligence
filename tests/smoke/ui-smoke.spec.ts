@@ -6,6 +6,9 @@
  * and airline profile. These must pass for a PR merge status to be green.
  */
 import { test, expect, Page } from '@playwright/test';
+import { AppPage, AppTab } from '../pages/AppPage';
+import { FlightSearchPage } from '../pages/FlightSearchPage';
+import { AirlinePage } from '../pages/AirlinePage';
 
 // ── Minimal mock responses ───────────────────────────────────────────────────
 
@@ -67,69 +70,76 @@ async function mockApi(page: Page) {
 
 // ── App shell ────────────────────────────────────────────────────────────────
 
+const ALL_TABS: AppTab[] = ['map', 'flight', 'delays', 'airline'];
+
 test('SM-UI-01: page loads and shows all four navigation tabs', async ({ page }) => {
+  const app = new AppPage(page);
   await mockApi(page);
-  await page.goto('/');
-  await page.waitForLoadState('domcontentloaded');
-  for (const label of ['Live Map', 'Find Flight', 'Delays', 'Airlines']) {
-    await expect(page.locator('nav').getByRole('button', { name: label })).toBeVisible();
+  await app.goto();
+  for (const tab of ALL_TABS) {
+    await expect(app.tabButton(tab)).toBeVisible();
   }
 });
 
 test('SM-UI-02: switching between tabs does not crash the page', async ({ page }) => {
+  const app = new AppPage(page);
   await mockApi(page);
   await page.goto('/');
-  for (const label of ['Find Flight', 'Delays', 'Airlines', 'Live Map']) {
-    await page.locator('nav').getByRole('button', { name: label }).click();
+  for (const tab of ['flight', 'delays', 'airline', 'map'] as AppTab[]) {
+    await app.navigateTo(tab);
     // No uncaught JS error dialog
-    await expect(page.locator('body')).not.toBeEmpty();
+    await expect(app.body).not.toBeEmpty();
   }
 });
 
 // ── Flight search ────────────────────────────────────────────────────────────
 
 test('SM-UI-03: flight number search renders a FlightCard with the airline name', async ({ page }) => {
+  const app = new AppPage(page);
+  const flightSearch = new FlightSearchPage(page);
   await mockApi(page);
   await page.goto('/');
-  await page.locator('nav').getByRole('button', { name: 'Find Flight' }).click();
-  await page.getByPlaceholder('e.g. 6E 5321, BA 117').fill('6E 5321');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.getByText('6E 5321', { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'IndiGo' })).toBeVisible();
+  await app.navigateTo('flight');
+  await flightSearch.flightNumberInput.fill('6E 5321');
+  await flightSearch.searchButton.click();
+  await expect(flightSearch.cardText('6E 5321')).toBeVisible();
+  await expect(flightSearch.airlineButton('IndiGo')).toBeVisible();
 });
 
 test('SM-UI-04: route mode shows analytics panel and airline comparison table', async ({ page }) => {
+  const app = new AppPage(page);
+  const flightSearch = new FlightSearchPage(page);
   await mockApi(page);
   await page.goto('/');
-  await page.locator('nav').getByRole('button', { name: 'Find Flight' }).click();
-  await page.getByRole('button', { name: /Route/i }).click();
-  await page.getByPlaceholder('From (BLR)').fill('BLR');
-  await page.getByPlaceholder('To (DEL)').fill('DEL');
-  await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.getByTestId('route-analytics')).toBeVisible();
-  await expect(page.getByTestId('route-flights')).toBeVisible();
-  await expect(page.getByTestId('route-airlines-table')).toBeVisible();
+  await app.navigateTo('flight');
+  await flightSearch.selectRouteMode();
+  await flightSearch.fromInput.fill('BLR');
+  await flightSearch.toInput.fill('DEL');
+  await flightSearch.searchButton.click();
+  await expect(flightSearch.analytics.panel).toBeVisible();
+  await expect(flightSearch.analytics.flights).toBeVisible();
+  await expect(flightSearch.analytics.airlinesTable).toBeVisible();
 });
 
 // ── Airline tab ───────────────────────────────────────────────────────────────
 
 test('SM-UI-05: airline tab renders the IATA search form', async ({ page }) => {
+  const app = new AppPage(page);
+  const airlinePage = new AirlinePage(page);
   await mockApi(page);
   await page.goto('/');
-  await page.locator('nav').getByRole('button', { name: 'Airlines' }).click();
-  // The IATA input is a 3-char text field; accept either placeholder-based or maxlength selector
-  const input = page.locator('input[maxlength="3"]').or(page.getByPlaceholder(/IATA/i));
-  await expect(input.first()).toBeVisible();
+  await app.navigateTo('airline');
+  await expect(airlinePage.iataInput).toBeVisible();
 });
 
 test('SM-UI-06: airline profile lookup renders the profile with score and metrics', async ({ page }) => {
+  const app = new AppPage(page);
+  const airlinePage = new AirlinePage(page);
   await mockApi(page);
   await page.goto('/');
-  await page.locator('nav').getByRole('button', { name: 'Airlines' }).click();
-  const input = page.locator('input[maxlength="3"]').or(page.getByPlaceholder(/IATA/i));
-  await input.first().fill('6E');
-  // Submit via Enter or the first visible submit button in the form
-  await input.first().press('Enter');
-  await expect(page.getByText('IndiGo', { exact: false }).first()).toBeVisible();
-  await expect(page.getByText('80', { exact: true }).first()).toBeVisible();
+  await app.navigateTo('airline');
+  await airlinePage.iataInput.fill('6E');
+  await airlinePage.iataInput.press('Enter');
+  await expect(airlinePage.airlineName('IndiGo')).toBeVisible();
+  await expect(airlinePage.scoreValue(80)).toBeVisible();
 });

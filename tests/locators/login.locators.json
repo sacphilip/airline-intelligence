@@ -1,0 +1,9 @@
+{
+  "heading":         { "role": "heading", "name": "Sign in" },
+  "emailInput":      { "label": "Email" },
+  "passwordInput":   { "label": "Password" },
+  "submitButton":    { "role": "button", "name": "Log in" },
+  "signingInButton": { "role": "button", "name": { "regex": "Signing in", "flags": "i" } },
+  "formAlert":       { "css": "div[role=\"alert\"]:not([aria-live])" },
+  "emailError":      { "css": "#email-error" }
+}

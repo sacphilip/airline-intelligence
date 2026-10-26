@@ -56,7 +56,7 @@ test.describe('App navigation', () => {
   });
 
   test('TC-NAV-10: dark/light mode toggle exists', async ({ app }) => {
-    const toggle = app.page.locator('button[title*="mode"]');
+    const toggle = app.themeToggle;
     await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(toggle).toBeVisible();
