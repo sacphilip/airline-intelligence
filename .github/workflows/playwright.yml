@@ -191,16 +191,20 @@ jobs:
         COMMIT_MSG: ${{ github.event.head_commit.message }}
       run: |
         # Merge commit message contains the PR branch, e.g.:
-        #   "Merge pull request #N from user/feature/us-011-user-login"
+        #   "Merge pull request #N from user/qa/us-011-user-login"
         # Extract the first us-NNN pattern (case-insensitive).
-        story=$(echo "$COMMIT_MSG" | grep -oiP 'us-\d+' | head -1 | tr '[:upper:]' '[:lower:]')
+        story=$(echo "$COMMIT_MSG" | grep -oiE 'us-[0-9]+' | head -1 | tr '[:upper:]' '[:lower:]')
         if [ -n "$story" ]; then
           echo "Detected user story: $story"
           files=$(find tests/specs -name "${story}-*.spec.ts" 2>/dev/null | tr '\n' ' ')
         fi
-        # Fallback: if no story ID found in message, check for any spec changes in the merge
+        # Fallback 1: diff both parents of a merge commit so we see what the PR branch added
         if [ -z "$files" ]; then
-          files=$(git diff HEAD~1 --name-only -- 'tests/specs/us-*.spec.ts' | tr '\n' ' ')
+          files=$(git diff HEAD^1 HEAD^2 --name-only -- 'tests/specs/us-*.spec.ts' 2>/dev/null | tr '\n' ' ')
+        fi
+        # Fallback 2: for squash/direct pushes, diff against the previous commit
+        if [ -z "$files" ]; then
+          files=$(git diff HEAD~1 --name-only -- 'tests/specs/us-*.spec.ts' 2>/dev/null | tr '\n' ' ')
         fi
         echo "files=$files" >> $GITHUB_OUTPUT
         if [ -n "$files" ]; then
